@@ -1,194 +1,172 @@
-#![deny(unsafe_code)]
-#![no_main]
 #![no_std]
+#![no_main]
 
+// you can put a breakpoint on `rust_begin_unwind` to catch panics
 use panic_halt as _;
 
-use cortex_m_rt::entry;
-use stm32f1xx_hal::{adc, delay, pac, prelude::*, stm32};
-
-use dht_sensor::{dht22, DhtReading};
-use embedded_hal::digital::v2::OutputPin;
-
-use ssd1306::{prelude::*, Builder, I2CDIBuilder};
-use stm32f1xx_hal::i2c::{BlockingI2c, DutyCycle, Mode};
+use rtic::app;
 
 use core::fmt::Write;
-use e_ring::hist::Hist;
-use e_ring::Ring;
+use embedded_hal::digital::v2::OutputPin;
+use stm32f1xx_hal::gpio::{gpioc::PC13, Output, PushPull, State, Alternate, OpenDrain, Analog};
+use stm32f1xx_hal::{pac, delay};
+use stm32f1xx_hal::prelude::*;
+use stm32f1xx_hal::timer::{CountDownTimer, Event, Timer};
+use stm32f1xx_hal::adc::Adc;
+use stm32f1xx_hal::i2c::BlockingI2c;
+use stm32f1xx_hal::pac::{ADC1, I2C2, ADC2};
+use stm32f1xx_hal::i2c::{Mode, DutyCycle};
+use ssd1306::{I2CDIBuilder, Builder};
+use ssd1306::mode::GraphicsMode;
+use ssd1306::prelude::I2CInterface;
+use ssd1306::displaysize::DisplaySize128x64;
+use stm32f1xx_hal::gpio::gpiob::{PB10, PB11, PB5, PB0, PB1};
+use stm32f1xx_hal::delay::Delay;
 use e_write_buffer::WriteBuffer;
-use embedded_graphics::fonts::{Font6x8, Text};
+use embedded_graphics::fonts::{Text, Font6x8};
+use embedded_graphics::geometry::Point;
+use embedded_graphics::style::{TextStyleBuilder};
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::*;
-use embedded_graphics::style::TextStyleBuilder;
-use stm32f1xx_hal::time::{Instant, MonoTimer};
+use embedded_graphics::drawable::Drawable;
+use cortex_m_semihosting::hprintln;
 
-const EVERY: u32 = 500;
+#[app(device = stm32f1xx_hal::pac, peripherals = true)]
+const APP: () = {
+    struct Resources {
+        led: PC13<Output<PushPull>>,
+        timer_handler: CountDownTimer<pac::TIM1>,
+        battery_adc: Adc<ADC1>,
+        moisture_adc: Adc<ADC2>,
+        display: GraphicsMode<I2CInterface<BlockingI2c<I2C2,(PB10<Alternate<OpenDrain>>, PB11<Alternate<OpenDrain>>)>>, DisplaySize128x64>,
+        delay: Delay,
+        dht_pin: PB5<Output<OpenDrain>>,
+        ch0: PB0<Analog>,
+        ch1: PB1<Analog>,
 
-#[entry]
-fn main() -> ! {
-    // Acquire peripherals
-    let p = pac::Peripherals::take().unwrap();
-    let cp = stm32::CorePeripherals::take().unwrap();
+        #[init(false)]
+        led_state: bool,
+    }
 
-    let mut flash = p.FLASH.constrain();
-    let mut rcc = p.RCC.constrain();
+    #[init]
+    fn init(cx: init::Context) -> init::LateResources {
+        hprintln!("init").unwrap();
+        // Take ownership over the raw flash and rcc devices and convert them into the corresponding
+        // HAL structs
+        let mut flash = cx.device.FLASH.constrain();
+        let mut rcc = cx.device.RCC.constrain();
 
-    // Configure ADC clocks
-    // Default value is the slowest possible ADC clock: PCLK2 / 8. Meanwhile ADC
-    // clock is configurable. So its frequency may be tweaked to meet certain
-    // practical needs. User specified value is be approximated using supported
-    // prescaler values 2/4/6/8.
-    let clocks = rcc
-        .cfgr
-        .adcclk(2.mhz())
-        .use_hse(8.mhz())
-        .freeze(&mut flash.acr);
-    //hprintln!("adc freq: {}", clocks.adcclk().0).unwrap();
+        // Freeze the configuration of all the clocks in the system and store the frozen frequencies
+        // in `clocks`
+        let clocks = rcc.cfgr.adcclk(2.mhz()).use_hse(8.mhz()).freeze(&mut flash.acr);
 
-    // Setup ADC
-    let mut adc1 = adc::Adc::adc1(p.ADC1, &mut rcc.apb2, clocks);
-    let mut adc2 = adc::Adc::adc2(p.ADC2, &mut rcc.apb2, clocks);
+        // Acquire the GPIO peripherals
+        let mut gpioc = cx.device.GPIOC.split(&mut rcc.apb2);
+        let mut gpiob = cx.device.GPIOB.split(&mut rcc.apb2);
 
-    // Setup GPIOB
-    let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
+        // Setup ADC
+        let battery_adc = Adc::adc1(cx.device.ADC1, &mut rcc.apb2, clocks);
+        let moisture_adc = Adc::adc2(cx.device.ADC2, &mut rcc.apb2, clocks);
+        // Configure pb0,pb1 as an analog input
+        let ch0 = gpiob.pb0.into_analog(&mut gpiob.crl);
+        let ch1 = gpiob.pb1.into_analog(&mut gpiob.crl);
 
-    // Configure pb0 as an analog input
-    let mut ch0 = gpiob.pb0.into_analog(&mut gpiob.crl);
-    let mut ch1 = gpiob.pb1.into_analog(&mut gpiob.crl);
+        // Setup display
+        let scl = gpiob.pb10.into_alternate_open_drain(&mut gpiob.crh);
+        let sda = gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh);
 
-    // This is used by `dht-sensor` to wait for signals
-    let mut delay = delay::Delay::new(cp.SYST, clocks);
+        let i2c = BlockingI2c::i2c2(
+            cx.device.I2C2,
+            (scl, sda),
+            Mode::Fast {
+                frequency: 400_000.hz(),
+                duty_cycle: DutyCycle::Ratio2to1,
+            },
+            clocks,
+            &mut rcc.apb1,
+            1000,
+            10,
+            1000,
+            1000,
+        );
+        let interface = I2CDIBuilder::new().init(i2c);
+        let mut display: GraphicsMode<_, _> = Builder::new().connect(interface).into();
+        display.init().unwrap();
 
-    let mut pb5 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
+        // This is used by `dht-sensor` to wait for signals
+        let delay = delay::Delay::new(cx.core.SYST, clocks);
+        let mut dht_pin = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
+        dht_pin.set_high().unwrap();
 
-    pb5.set_high().unwrap();
+        // Configure gpio C pin 13 as a push-pull output. The `crh` register is passed to the
+        // function in order to configure the port. For pins 0-7, crl should be passed instead
+        let led = gpioc
+            .pc13
+            .into_push_pull_output_with_state(&mut gpioc.crh, State::High);
 
-    let scl = gpiob.pb10.into_alternate_open_drain(&mut gpiob.crh);
-    let sda = gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh);
+        // Configure the syst timer to trigger an update every second and enables interrupt
+        let mut timer =
+            Timer::tim1(cx.device.TIM1, &clocks, &mut rcc.apb2).start_count_down(1.hz());
+        timer.listen(Event::Update);
 
-    let i2c = BlockingI2c::i2c2(
-        p.I2C2,
-        (scl, sda),
-        Mode::Fast {
-            frequency: 400_000.hz(),
-            duty_cycle: DutyCycle::Ratio2to1,
-        },
-        clocks,
-        &mut rcc.apb1,
-        1000,
-        10,
-        1000,
-        1000,
-    );
-    let interface = I2CDIBuilder::new().init(i2c);
-    let mut disp: GraphicsMode<_, _> = Builder::new().connect(interface).into();
-    disp.init().unwrap();
+        hprintln!("end init").unwrap();
+        // Init the static resources to use them later through RTIC
+        init::LateResources {
+            led,
+            battery_adc,
+            moisture_adc,
+            display,
+            dht_pin,
+            delay,
+            timer_handler: timer,
+            ch0,
+            ch1,
+        }
+    }
 
-    let text_style = TextStyleBuilder::new(Font6x8)
-        .text_color(BinaryColor::On)
-        .background_color(BinaryColor::Off)
-        .build();
+    #[idle]
+    fn idle(_cx: idle::Context) -> ! {
+        hprintln!("idle").unwrap();
+        loop {
+            cortex_m::asm::wfi();
+        }
+    }
 
-    let mut buffer: WriteBuffer<20> = WriteBuffer::new();
+    #[task(binds = TIM1_UP, priority = 1, resources = [led, timer_handler, led_state, battery_adc, moisture_adc, display, dht_pin, delay, ch0, ch1])]
+    fn tick(cx: tick::Context) {
+        hprintln!("tick").unwrap();
+        let mut buffer: WriteBuffer<20> = WriteBuffer::new();
 
-    let mut ring_battery: Ring<u16, 32> = Ring::new();
-    let mut ring_moisture: Ring<u16, 32> = Ring::new();
+        if *cx.resources.led_state {
+            cx.resources.led.set_high().unwrap();
+            *cx.resources.led_state = false;
+        } else {
+            cx.resources.led.set_low().unwrap();
+            *cx.resources.led_state = true;
+        }
 
-    let mut battery_chart: Ring<u16, 128> = Ring::new();
-    let mut moisture_chart: Ring<i16, 128> = Ring::new();
-    let hist = Hist::new(Point::new(0, 44), Point::new(128, 64)).unwrap();
+        let battery: u16 = cx.resources.battery_adc.read(cx.resources.ch0).unwrap();
+        let moisture: u16 = cx.resources.moisture_adc.read(cx.resources.ch1).unwrap();
 
-    let mut cycle_count = 1u32;
-    let mut cycle_time = 0u32;
+        let text_style = TextStyleBuilder::new(Font6x8)
+            .text_color(BinaryColor::On)
+            .background_color(BinaryColor::Off)
+            .build();
 
-    // The DHT11 datasheet suggests 1 second
-    //hprintln!("Waiting on the sensor...").unwrap();
-    delay.delay_ms(1000_u16);
-
-    let timer = MonoTimer::new(cp.DWT, cp.DCB, clocks);
-    let mut last_dht = timer.now();
-
-    loop {
-        let start = timer.now();
-        let data: u16 = adc1.read(&mut ch0).unwrap();
-        ring_moisture.append(data);
-
-        write!(buffer, "Moisture {:>9}", ring_moisture.avg() as u32).unwrap();
+        write!(buffer, "Moisture {:>9}", moisture).unwrap();
         Text::new(&buffer.as_str().unwrap(), Point::zero())
             .into_styled(text_style)
-            .draw(&mut disp)
+            .draw(cx.resources.display)
             .unwrap();
         buffer.reset();
 
-        let data2: u16 = adc2.read(&mut ch1).unwrap();
-        ring_battery.append(data2);
-        write!(buffer, "Battery {:>10}", ring_battery.avg() as u32).unwrap();
+        write!(buffer, "Moisture {:>9}", battery).unwrap();
         Text::new(&buffer.as_str().unwrap(), Point::new(0, 12))
             .into_styled(text_style)
-            .draw(&mut disp)
+            .draw(cx.resources.display)
             .unwrap();
         buffer.reset();
 
-        if timer.milliseconds_elapsed(last_dht) > 1000 {
-            // dht must not be read more than once a sec
-            last_dht = timer.now();
-            if let Ok(dht22::Reading {
-                          temperature,
-                          relative_humidity,
-                      }) = dht22::Reading::read(&mut delay, &mut pb5)
-            {
-                write!(
-                    buffer,
-                    "Temp {:>2}° RH {:>2}%",
-                    temperature as u32, relative_humidity as u32
-                )
-                    .unwrap();
-                Text::new(&buffer.as_str().unwrap(), Point::new(0, 24))
-                    .into_styled(text_style)
-                    .draw(&mut disp)
-                    .unwrap();
-                buffer.reset();
-            }
-        }
-
-        write!(buffer, "{} {}", cycle_count, cycle_time).unwrap();
-        Text::new(&buffer.as_str().unwrap(), Point::new(0, 36))
-            .into_styled(text_style)
-            .draw(&mut disp)
-            .unwrap();
-        buffer.reset();
-
-        if cycle_count % EVERY == 0 {
-            battery_chart.append(ring_battery.avg() as u16);
-            moisture_chart.append(ring_moisture.avg() as i16);
-        }
-
-        hist.draw(
-            &moisture_chart,
-            &mut disp,
-            BinaryColor::On,
-            BinaryColor::Off,
-        )
-        .unwrap();
-
-        disp.flush().unwrap();
-
-        cycle_time = timer.milliseconds_elapsed(start);
-        cycle_count += 1;
+        // Clears the update flag
+        cx.resources.timer_handler.clear_update_interrupt_flag();
     }
-}
-
-trait Elapsed {
-    fn seconds_elapsed(&self, start: Instant) -> f32;
-    fn milliseconds_elapsed(&self, start: Instant) -> u32;
-}
-
-impl Elapsed for MonoTimer {
-    fn seconds_elapsed(&self, start: Instant) -> f32 {
-        start.elapsed() as f32 / self.frequency().0 as f32
-    }
-    fn milliseconds_elapsed(&self, start: Instant) -> u32 {
-        (self.seconds_elapsed(start) * 1000.0) as u32
-    }
-}
+};
