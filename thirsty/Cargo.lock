@@ -182,8 +182,9 @@ dependencies = [
 
 [[package]]
 name = "e-ring"
-version = "0.1.0"
-source = "git+https://github.com/RCasatta/e-ring?rev=1d577e5fff5e2704a7b9c83f9a3c947d6fe3b55f#1d577e5fff5e2704a7b9c83f9a3c947d6fe3b55f"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43ccb552ac6db739cc7646d7b56bd5889c247257a87f5b148b1fcffd600ca255"
 dependencies = [
  "embedded-graphics",
 ]
@@ -437,6 +438,7 @@ checksum = "849b1e8d9bcfd792c9d9178cf86165d299a661c26e35d9322ae9382d3f3fe460"
 dependencies = [
  "bare-metal",
  "cortex-m 0.6.7",
+ "cortex-m-rt",
  "vcell",
 ]
 
@@ -458,9 +460,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.72"
+version = "1.0.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e8cdbefb79a9a5a65e0db8b47b723ee907b7c7f8496c76a1770b5c310bab82"
+checksum = "f71489ff30030d2ae598524f61326b902466f72a0fb1a8564c001cc63425bcc7"
 dependencies = [
  "proc-macro2",
  "quote",

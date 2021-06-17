@@ -8,19 +8,20 @@ version = "0.1.0"
 [dependencies]
 cortex-m = "0.6.0"
 cortex-m-rt = "0.6.10"
-cortex-m-semihosting = "0.3.3"
+cortex-m-semihosting = { version="0.3.3", optional = true }
 cortex-m-rtic = "0.5"
 panic-halt = "0.2.0"
-stm32f1xx-hal = { version = "0.7.0", features = ["stm32f103"] }
+stm32f1xx-hal = { version = "0.7.0", features = ["stm32f103", "rt", "medium"] }
 dht-sensor = "0.2.1"
 embedded-hal = "0.2.3"
 ssd1306 = "0.5.2"
 embedded-graphics = "0.6.2"
 e-write-buffer = "0.5.0"
-e-ring = { git = "https://github.com/RCasatta/e-ring", rev = "1d577e5fff5e2704a7b9c83f9a3c947d6fe3b55f",  features = ["hist"] }
+e-ring = { version = "0.2.0", features = ["hist"] }
 
 [features]
 default = []
+semihosting = ["cortex-m-semihosting"]
 
 # this lets you use `cargo fix`!
 [[bin]]
