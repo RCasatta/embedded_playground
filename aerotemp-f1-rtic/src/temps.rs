@@ -1,4 +1,4 @@
-use crate::Scale;
+use crate::types::Scale;
 use e_ring::Ring;
 
 pub struct TempsValues([[Ring<i16, 128>; 3]; 2]);

@@ -2,133 +2,67 @@
 #![no_main]
 
 mod temps;
-
+mod types;
 use panic_halt as _;
 
 use rtic::app;
 
 use crate::temps::TempsValues;
-use core::fmt::{self, Formatter, Write};
+use crate::types::{BusType, Button, Display, Scale, SharedBusResources, Unit};
+use core::fmt::Write;
 use e_ring::hist::Hist;
 use e_write_buffer::WriteBuffer;
-use embedded_graphics::drawable::Drawable;
-use embedded_graphics::fonts::{Font12x16, Font6x8, Text};
 use embedded_graphics::geometry::{Point, Size};
+use embedded_graphics::image::Image;
+use embedded_graphics::mono_font::ascii::{FONT_6X9, FONT_8X13};
+use embedded_graphics::mono_font::{iso_8859_1, MonoTextStyle};
 use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
-use embedded_graphics::style::TextStyleBuilder;
+use embedded_graphics::text::renderer::CharacterStyle;
+use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
+use embedded_graphics::Drawable;
 use embedded_hal::digital::v2::OutputPin;
 use max31865::FilterMode::Filter50Hz;
 use max31865::SensorType::TwoOrFourWire;
 use max31865::{temp_conversion, Max31865};
-use shared_bus_rtic::SharedBus;
 use ssd1351::builder::Builder;
-use ssd1351::interface::SpiInterface;
 use ssd1351::mode::GraphicsMode;
 use ssd1351::prelude::SSD1351_SPI_MODE;
 use ssd1351::properties::DisplayRotation;
 use stm32f1xx_hal::delay::Delay;
-use stm32f1xx_hal::gpio::gpioa::{PA0, PA1, PA3, PA5, PA6, PA7};
-use stm32f1xx_hal::gpio::gpiob::{PB0, PB1, PB10, PB11, PB13, PB14, PB15};
-use stm32f1xx_hal::gpio::{Alternate, Edge};
-use stm32f1xx_hal::gpio::{ExtiPin, Floating, Input, Output, PushPull};
+use stm32f1xx_hal::gpio::gpioa::{PA0, PA1};
+use stm32f1xx_hal::gpio::Edge;
+use stm32f1xx_hal::gpio::{ExtiPin, Floating, Input};
 use stm32f1xx_hal::pac;
 use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::spi::{Spi, Spi1NoRemap, Spi2NoRemap};
-use stm32f1xx_hal::time::{Instant, MonoTimer};
+use stm32f1xx_hal::spi::Spi;
+use stm32f1xx_hal::time::MonoTimer;
 use stm32f1xx_hal::timer::{CountDownTimer, Event, Timer};
+use tinytga::DynamicTga;
 
 const RECENTLY: u32 = 2_000_000;
-
-#[rustfmt::skip]
-type BusType = Spi<stm32f1xx_hal::pac::SPI2, Spi2NoRemap, (PB13<Alternate<PushPull>>, PB14<Input<Floating>>, PB15<Alternate<PushPull>>), u8>;
-#[rustfmt::skip]
-type Display = GraphicsMode<SpiInterface<Spi<stm32f1xx_hal::pac::SPI1, Spi1NoRemap, (PA5<Alternate<PushPull>>, PA6<Input<Floating>>, PA7<Alternate<PushPull>>, ), u8, >, PA3<Output<PushPull>>, >, >;
-
-pub struct SharedBusResources<T: 'static> {
-    t1: Max31865<SharedBus<T>, PB0<Output<PushPull>>, PB1<Input<Floating>>>,
-    t2: Max31865<SharedBus<T>, PB11<Output<PushPull>>, PB10<Input<Floating>>>,
-}
-
-pub enum Unit {
-    Degrees,
-    Fahrenheit,
-}
-
-impl fmt::Display for Unit {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Unit::Degrees => write!(f, "°C"),
-            Unit::Fahrenheit => write!(f, "°F"),
-        }
-    }
-}
-
-impl Unit {
-    fn next(&mut self) {
-        *self = match self {
-            Unit::Degrees => Unit::Fahrenheit,
-            Unit::Fahrenheit => Unit::Degrees,
-        }
-    }
-}
-
-#[derive(Copy, Clone)]
-pub enum Scale {
-    Seconds,
-    TenSeconds,
-    Minute,
-}
-
-impl fmt::Display for Scale {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Scale::Seconds => write!(f, "1 second"),
-            Scale::TenSeconds => write!(f, "10 seconds"),
-            Scale::Minute => write!(f, "1 minute"),
-        }
-    }
-}
-
-impl Scale {
-    fn next(&mut self) {
-        *self = match self {
-            Scale::Seconds => Scale::TenSeconds,
-            Scale::TenSeconds => Scale::Minute,
-            Scale::Minute => Scale::Seconds,
-        };
-    }
-    fn seconds(&self) -> u32 {
-        match self {
-            Scale::Seconds => 1,
-            Scale::TenSeconds => 10,
-            Scale::Minute => 60,
-        }
-    }
-}
-
-pub struct Button<T> {
-    pin: T,
-    last: Instant,
-}
 
 #[app(device = stm32f1xx_hal::pac, peripherals = true)]
 const APP: () = {
     struct Resources {
-        timer_handler: CountDownTimer<pac::TIM1>,
+        #[init(1)]
         seconds: u32,
+        #[init(true)]
+        reset_display: bool,
+        #[init(Unit::Degrees)]
+        unit: Unit,
+        #[init(Scale::Seconds)]
+        scale: Scale,
+
+        timer_handler: CountDownTimer<pac::TIM1>,
         mono_timer: MonoTimer,
 
         display: Display,
-        reset_display: bool,
 
         pa0: Button<PA0<Input<Floating>>>,
         pa1: Button<PA1<Input<Floating>>>,
 
         temps: SharedBusResources<BusType>,
         temps_values: TempsValues,
-
-        unit: Unit,
-        scale: Scale,
     }
 
     #[init]
@@ -191,9 +125,9 @@ const APP: () = {
         };
 
         // Configure the syst timer to trigger an update every second and enables interrupt
-        let mut timer =
+        let mut timer_handler =
             Timer::tim1(cx.device.TIM1, &clocks, &mut rcc.apb2).start_count_down(1.hz());
-        timer.listen(Event::Update);
+        timer_handler.listen(Event::Update);
 
         let mut gpiob = cx.device.GPIOB.split(&mut rcc.apb2);
 
@@ -231,18 +165,25 @@ const APP: () = {
         t2.set_calibration(430_000);
         let temps = SharedBusResources { t1, t2 };
 
+        let image_data = include_bytes!("../assets/pegaso_avionics.tga");
+        let tga = DynamicTga::from_slice(image_data).unwrap();
+        let image = Image::new(&tga, Point::zero());
+        image.draw(&mut display).unwrap();
+
+        let text_style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+        Text::new("Pegaso Avionics", Point::new(4, 118), text_style)
+            .draw(&mut display)
+            .unwrap();
+        delay.delay_ms(2000u16);
+
         init::LateResources {
-            timer_handler: timer,
             temps_values: TempsValues::default(),
+            timer_handler,
             mono_timer,
-            seconds: 1,
             display,
-            reset_display: true,
             pa0,
             pa1,
             temps,
-            unit: Unit::Degrees,
-            scale: Scale::Seconds,
         }
     }
 
@@ -253,66 +194,35 @@ const APP: () = {
         }
     }
 
-    #[task(binds = TIM1_UP, priority = 1, spawn = [screen], resources = [timer_handler, seconds, temps, temps_values])]
-    fn tick(cx: tick::Context) {
+    #[task(binds = TIM1_UP, priority = 1, resources = [timer_handler, seconds, temps, temps_values, scale, unit, display, reset_display])]
+    fn tick(mut cx: tick::Context) {
         let seconds = cx.resources.seconds;
+        let display = cx.resources.display;
+        let temps_values = cx.resources.temps_values;
+        let reset_display = cx.resources.reset_display.lock(|reset_display| {
+            let temp = *reset_display;
+            *reset_display = false;
+            temp
+        });
+        let scale = cx.resources.scale.lock(|scale| *scale);
+        let unit = cx.resources.unit.lock(|unit| *unit);
+
+        let mut buffer: WriteBuffer<20> = WriteBuffer::new();
 
         let ohms1 = cx.resources.temps.t1.read_ohms().unwrap();
         let t1 = temp_conversion::LOOKUP_VEC_PT1000.lookup_temperature(ohms1 as i32);
-        cx.resources.temps_values.store(t1 as i16, *seconds, 0);
+        temps_values.store(t1 as i16, *seconds, 0);
 
         let ohms2 = cx.resources.temps.t2.read_ohms().unwrap();
         let t2 = temp_conversion::LOOKUP_VEC_PT1000.lookup_temperature(ohms2 as i32);
-        cx.resources.temps_values.store(t2 as i16, *seconds, 1);
+        temps_values.store(t2 as i16, *seconds, 1);
 
-        cx.spawn.screen().unwrap();
-
-        *seconds += 1;
-        // Clears the update flag
-        cx.resources.timer_handler.clear_update_interrupt_flag();
-    }
-
-    #[task(binds = EXTI0, priority = 1, resources = [pa0, unit, mono_timer])]
-    fn exti0(cx: exti0::Context) {
-        let button = cx.resources.pa0;
-        if button.last.elapsed() > RECENTLY {
-            button.last = cx.resources.mono_timer.now();
-            cx.resources.unit.next();
-        }
-        button.pin.clear_interrupt_pending_bit();
-    }
-
-    #[task(binds = EXTI1, priority = 1, resources = [pa1, scale, reset_display, mono_timer])]
-    fn exti1(cx: exti1::Context) {
-        let button = cx.resources.pa1;
-        if button.last.elapsed() > RECENTLY {
-            button.last = cx.resources.mono_timer.now();
-            cx.resources.scale.next();
-            *cx.resources.reset_display = true;
-        }
-        button.pin.clear_interrupt_pending_bit();
-    }
-
-    #[task(resources = [display, reset_display, temps_values, scale, unit])]
-    fn screen(cx: screen::Context) {
-        let mut buffer: WriteBuffer<20> = WriteBuffer::new();
-        let mut pad_buffer: WriteBuffer<20> = WriteBuffer::new();
-
-        let display = cx.resources.display;
-        let scale = cx.resources.scale;
-        let unit = cx.resources.unit;
-        let reset_display = cx.resources.reset_display;
-
-        if *reset_display {
+        if reset_display {
             display.clear();
-            draw_titles(display, *scale, &mut buffer);
-            *reset_display = false;
+            draw_titles(display, scale, &mut buffer);
         }
 
-        let last_degrees = match (
-            cx.resources.temps_values.last(0),
-            cx.resources.temps_values.last(1),
-        ) {
+        let last_degrees = match (temps_values.last(0), temps_values.last(1)) {
             (Some(t1), Some(t2)) => [t1, t2],
             _ => return,
         };
@@ -322,35 +232,60 @@ const APP: () = {
             Unit::Fahrenheit => [fahrenheit(last_degrees[0]), fahrenheit(last_degrees[1])],
         };
         let color = [color(last_degrees[0]), color(last_degrees[1])];
-        let temp_position = [Point::new(0, 10), Point::new(0, 70)];
+        let temp_position = [Point::new(136, 0), Point::new(136, 60)];
         let hist_position = [Point::new(0, 25), Point::new(0, 85)];
         let hist_size = Size::new(128, 30);
 
         for i in 0..=1usize {
-            let text_style_big = TextStyleBuilder::new(Font12x16)
-                .text_color(color[i])
-                .background_color(RgbColor::BLACK)
+            let mut font = MonoTextStyle::new(&iso_8859_1::FONT_10X20, color[i]);
+            font.set_background_color(Some(Rgb565::BLACK));
+            let style = TextStyleBuilder::new()
+                .alignment(Alignment::Right)
+                .baseline(Baseline::Top)
                 .build();
 
+            write!(buffer, "  ").unwrap();
             format_100(last[i], &mut buffer);
-            write!(buffer, " {}", unit).unwrap();
-            write!(pad_buffer, "{:>10}", buffer.as_str().unwrap()).unwrap();
-            Text::new(pad_buffer.as_str().unwrap(), temp_position[i])
-                .into_styled(text_style_big)
+            write!(buffer, "{}", unit).unwrap();
+            Text::with_text_style(buffer.as_str().unwrap(), temp_position[i], font, style)
                 .draw(display)
                 .unwrap();
             buffer.reset();
-            pad_buffer.reset();
 
             let hist = Hist::new(hist_position[i].clone(), hist_size.clone());
             hist.draw(
-                cx.resources.temps_values.series(i, *scale),
+                temps_values.series(i, scale),
                 display,
                 RgbColor::GREEN,
                 RgbColor::BLACK,
             )
             .unwrap();
         }
+        *seconds += 1;
+
+        // Clears the update flag
+        cx.resources.timer_handler.clear_update_interrupt_flag();
+    }
+
+    #[task(binds = EXTI0, priority = 2, resources = [pa0, unit, mono_timer])]
+    fn exti0(cx: exti0::Context) {
+        let button = cx.resources.pa0;
+        if button.last.elapsed() > RECENTLY {
+            button.last = cx.resources.mono_timer.now();
+            cx.resources.unit.next();
+        }
+        button.pin.clear_interrupt_pending_bit();
+    }
+
+    #[task(binds = EXTI1, priority = 2, resources = [pa1, scale, reset_display, mono_timer])]
+    fn exti1(cx: exti1::Context) {
+        let button = cx.resources.pa1;
+        if button.last.elapsed() > RECENTLY {
+            button.last = cx.resources.mono_timer.now();
+            cx.resources.scale.next();
+            *cx.resources.reset_display = true;
+        }
+        button.pin.clear_interrupt_pending_bit();
     }
 
     extern "C" {
@@ -372,7 +307,7 @@ fn color(degrees: i16) -> Rgb565 {
     } else if degrees < 1500 {
         RgbColor::YELLOW
     } else {
-        RgbColor::WHITE
+        RgbColor::GREEN
     }
 }
 
@@ -385,30 +320,28 @@ fn format_100<const N: usize>(val: i16, buf: &mut WriteBuffer<N>) {
     write!(buf, "{}{}.{}", sign, before_comma, after_comma).unwrap();
 }
 
+/// Draw the texts that needs only to be re-drawn only on reset
 fn draw_titles<const N: usize>(display: &mut Display, scale: Scale, buffer: &mut WriteBuffer<N>) {
-    let text_style_small = TextStyleBuilder::new(Font6x8)
-        .text_color(RgbColor::YELLOW)
-        .background_color(RgbColor::BLACK)
-        .build();
+    let text_style_small = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
 
-    Text::new("OAT", Point::new(0, 2))
-        .into_styled(text_style_small)
+    Text::with_baseline("OAT", Point::new(0, 0), text_style_small, Baseline::Top)
         .draw(display)
         .unwrap();
 
-    Text::new("CAT", Point::new(0, 62))
-        .into_styled(text_style_small)
+    Text::with_baseline("CAT", Point::new(0, 60), text_style_small, Baseline::Top)
         .draw(display)
         .unwrap();
 
-    let text_style_small = TextStyleBuilder::new(Font6x8)
-        .text_color(RgbColor::WHITE)
-        .background_color(RgbColor::BLACK)
-        .build();
+    let text_style_small = MonoTextStyle::new(&FONT_6X9, Rgb565::WHITE);
+
     write!(buffer, "{}", scale).unwrap();
-    Text::new(buffer.as_str().unwrap(), Point::new(0, 120))
-        .into_styled(text_style_small)
-        .draw(display)
-        .unwrap();
+    Text::with_baseline(
+        buffer.as_str().unwrap(),
+        Point::new(0, 119),
+        text_style_small,
+        Baseline::Top,
+    )
+    .draw(display)
+    .unwrap();
     buffer.reset();
 }
