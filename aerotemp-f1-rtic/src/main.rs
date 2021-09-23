@@ -9,6 +9,7 @@ use rtic::app;
 
 use crate::temps::TempsValues;
 use crate::types::{BusType, Button, Display, Scale, SharedBusResources, Unit};
+use can_entities::{bxcan, Temperatures};
 use core::fmt::Write;
 use e_ring::hist::Hist;
 use e_write_buffer::WriteBuffer;
@@ -20,7 +21,6 @@ use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics::text::renderer::CharacterStyle;
 use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 use embedded_graphics::Drawable;
-use embedded_hal::digital::v2::OutputPin;
 use max31865::FilterMode::Filter50Hz;
 use max31865::SensorType::TwoOrFourWire;
 use max31865::{temp_conversion, Max31865};
@@ -28,16 +28,20 @@ use ssd1351::builder::Builder;
 use ssd1351::mode::GraphicsMode;
 use ssd1351::prelude::SSD1351_SPI_MODE;
 use ssd1351::properties::DisplayRotation;
+use stm32f1xx_hal::can::Can;
 use stm32f1xx_hal::delay::Delay;
 use stm32f1xx_hal::gpio::gpioa::{PA0, PA1};
 use stm32f1xx_hal::gpio::Edge;
 use stm32f1xx_hal::gpio::{ExtiPin, Floating, Input};
 use stm32f1xx_hal::pac;
+use stm32f1xx_hal::pac::CAN1;
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::spi::Spi;
 use stm32f1xx_hal::time::MonoTimer;
 use stm32f1xx_hal::timer::{CountDownTimer, Event, Timer};
 use tinytga::DynamicTga;
+use can_entities::bxcan::filter::Mask32;
+use nb::block;
 
 const RECENTLY: u32 = 2_000_000;
 
@@ -63,20 +67,22 @@ const APP: () = {
 
         temps: SharedBusResources<BusType>,
         temps_values: TempsValues,
+
+        can: bxcan::Can<Can<CAN1>>,
     }
 
     #[init]
     fn init(cx: init::Context) -> init::LateResources {
-        let mut rcc = cx.device.RCC.constrain();
-        let mut afio = cx.device.AFIO.constrain(&mut rcc.apb2);
+        let rcc = cx.device.RCC.constrain();
+        let mut afio = cx.device.AFIO.constrain();
         let mut flash = cx.device.FLASH.constrain();
-        let mut gpioa = cx.device.GPIOA.split(&mut rcc.apb2);
+        let mut gpioa = cx.device.GPIOA.split();
 
         let clocks = rcc.cfgr.use_hse(8.mhz()).freeze(&mut flash.acr);
 
         // Setup display
         let mut nss = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
-        nss.set_low().unwrap();
+        nss.set_low();
         let pins = (
             gpioa.pa5.into_alternate_push_pull(&mut gpioa.crl), // sck
             gpioa.pa6.into_floating_input(&mut gpioa.crl),      // miso
@@ -92,23 +98,29 @@ const APP: () = {
             SSD1351_SPI_MODE,
             2_000_000.hz(),
             clocks,
-            &mut rcc.apb2,
         );
 
         let mut display: GraphicsMode<_> = Builder::new().connect_spi(spi, dc).into();
-
         let mut delay = Delay::new(cx.core.SYST, clocks);
-
         display.reset(&mut rst, &mut delay).unwrap();
         display.init().unwrap();
         display.set_rotation(DisplayRotation::Rotate180).unwrap();
+
+        let image_data = include_bytes!("../assets/pegaso_avionics.tga");
+        let tga = DynamicTga::from_slice(image_data).unwrap();
+        let image = Image::new(&tga, Point::zero());
+        image.draw(&mut display).unwrap();
+        let text_style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+        Text::new("Pegaso Avionics", Point::new(4, 118), text_style)
+            .draw(&mut display)
+            .unwrap();
 
         let mono_timer = MonoTimer::new(cx.core.DWT, cx.core.DCB, clocks);
 
         // Setup Buttons
         let mut pa0 = gpioa.pa0.into_floating_input(&mut gpioa.crl);
         pa0.make_interrupt_source(&mut afio);
-        pa0.trigger_on_edge(&cx.device.EXTI, Edge::RISING);
+        pa0.trigger_on_edge(&cx.device.EXTI, Edge::Rising);
         pa0.enable_interrupt(&cx.device.EXTI);
         let pa0 = Button {
             pin: pa0,
@@ -117,7 +129,7 @@ const APP: () = {
 
         let mut pa1 = gpioa.pa1.into_floating_input(&mut gpioa.crl);
         pa1.make_interrupt_source(&mut afio);
-        pa1.trigger_on_edge(&cx.device.EXTI, Edge::RISING);
+        pa1.trigger_on_edge(&cx.device.EXTI, Edge::Rising);
         pa1.enable_interrupt(&cx.device.EXTI);
         let pa1 = Button {
             pin: pa1,
@@ -125,11 +137,10 @@ const APP: () = {
         };
 
         // Configure the syst timer to trigger an update every second and enables interrupt
-        let mut timer_handler =
-            Timer::tim1(cx.device.TIM1, &clocks, &mut rcc.apb2).start_count_down(1.hz());
+        let mut timer_handler = Timer::tim1(cx.device.TIM1, &clocks).start_count_down(1.hz());
         timer_handler.listen(Event::Update);
 
-        let mut gpiob = cx.device.GPIOB.split(&mut rcc.apb2);
+        let mut gpiob = cx.device.GPIOB.split();
 
         let pins = (
             gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh), // sck
@@ -137,14 +148,7 @@ const APP: () = {
             gpiob.pb15.into_alternate_push_pull(&mut gpiob.crh), // mosi
         );
 
-        let spi = Spi::spi2(
-            cx.device.SPI2,
-            pins,
-            max31865::MODE,
-            2_000_000.hz(),
-            clocks,
-            &mut rcc.apb1,
-        );
+        let spi = Spi::spi2(cx.device.SPI2, pins, max31865::MODE, 2_000_000.hz(), clocks);
 
         let manager = shared_bus_rtic::new!(spi, BusType);
 
@@ -165,16 +169,28 @@ const APP: () = {
         t2.set_calibration(430_000);
         let temps = SharedBusResources { t1, t2 };
 
-        let image_data = include_bytes!("../assets/pegaso_avionics.tga");
-        let tga = DynamicTga::from_slice(image_data).unwrap();
-        let image = Image::new(&tga, Point::zero());
-        image.draw(&mut display).unwrap();
+        let mut can = {
+            let can = Can::new(cx.device.CAN1, cx.device.USB);
 
-        let text_style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
-        Text::new("Pegaso Avionics", Point::new(4, 118), text_style)
-            .draw(&mut display)
-            .unwrap();
-        delay.delay_ms(2000u16);
+            let rx = gpiob.pb8.into_floating_input(&mut gpiob.crh);
+            let tx = gpiob.pb9.into_alternate_push_pull(&mut gpiob.crh);
+            can.assign_pins((tx, rx), &mut afio.mapr);
+
+            bxcan::Can::new(can)
+        };
+
+        // APB1 (PCLK1): 8MHz, Bit rate: 125kBit/s, Sample Point 87.5%
+        // Value was calculated with http://www.bittiming.can-wiki.info/
+        can.modify_config().set_bit_timing(0x001c_0003);
+        // Configure filters so that can frames can be received.
+        let mut filters = can.modify_filters();
+        filters.enable_bank(0, Mask32::accept_all());
+        // Drop filters to leave filter configuraiton mode.
+        drop(filters);
+        // Split the peripheral into transmitter and receiver parts.
+        block!(can.enable()).unwrap();
+
+        delay.delay_ms(2000u16); // show the splashscreen
 
         init::LateResources {
             temps_values: TempsValues::default(),
@@ -184,6 +200,7 @@ const APP: () = {
             pa0,
             pa1,
             temps,
+            can,
         }
     }
 
@@ -194,7 +211,7 @@ const APP: () = {
         }
     }
 
-    #[task(binds = TIM1_UP, priority = 1, resources = [timer_handler, seconds, temps, temps_values, scale, unit, display, reset_display])]
+    #[task(binds = TIM1_UP, priority = 2, spawn = [transmit], resources = [timer_handler, seconds, temps, temps_values, scale, unit, display, reset_display])]
     fn tick(mut cx: tick::Context) {
         let seconds = cx.resources.seconds;
         let display = cx.resources.display;
@@ -216,6 +233,12 @@ const APP: () = {
         let ohms2 = cx.resources.temps.t2.read_ohms().unwrap();
         let t2 = temp_conversion::LOOKUP_VEC_PT1000.lookup_temperature(ohms2 as i32);
         temps_values.store(t2 as i16, *seconds, 1);
+
+        let temps = Temperatures {
+            secs: *seconds,
+            temps: [t1 as i16, t2 as i16]
+        };
+        cx.spawn.transmit(temps).unwrap();
 
         if reset_display {
             display.clear();
@@ -267,7 +290,7 @@ const APP: () = {
         cx.resources.timer_handler.clear_update_interrupt_flag();
     }
 
-    #[task(binds = EXTI0, priority = 2, resources = [pa0, unit, mono_timer])]
+    #[task(binds = EXTI0, priority = 3, resources = [pa0, unit, mono_timer])]
     fn exti0(cx: exti0::Context) {
         let button = cx.resources.pa0;
         if button.last.elapsed() > RECENTLY {
@@ -277,7 +300,7 @@ const APP: () = {
         button.pin.clear_interrupt_pending_bit();
     }
 
-    #[task(binds = EXTI1, priority = 2, resources = [pa1, scale, reset_display, mono_timer])]
+    #[task(binds = EXTI1, priority = 3, resources = [pa1, scale, reset_display, mono_timer])]
     fn exti1(cx: exti1::Context) {
         let button = cx.resources.pa1;
         if button.last.elapsed() > RECENTLY {
@@ -286,6 +309,15 @@ const APP: () = {
             *cx.resources.reset_display = true;
         }
         button.pin.clear_interrupt_pending_bit();
+    }
+
+    #[task(priority = 1, resources = [can])]
+    fn transmit(cx: transmit::Context, temps: Temperatures) {
+        let can = cx.resources.can;
+        let frame = temps.into();
+        if can.is_transmitter_idle() {
+            let _ = block!(can.transmit(&frame));
+        }
     }
 
     extern "C" {
