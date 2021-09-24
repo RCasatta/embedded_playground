@@ -158,7 +158,9 @@ dependencies = [
 
 [[package]]
 name = "e-ring"
-version = "0.2.0"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6609dbd3d7ec3489e983e4feac1dc7b5d5b4f07fe0426bcc4931023caa9e4510"
 dependencies = [
  "embedded-graphics",
 ]
@@ -459,7 +461,9 @@ dependencies = [
 
 [[package]]
 name = "ssd1351"
-version = "0.3.0"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9051e26ae040b9b347965f8760991b995980cb9c7d1aeaaf97423fe630b5a4a3"
 dependencies = [
  "embedded-graphics-core",
  "embedded-hal",
