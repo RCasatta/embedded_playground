@@ -9,7 +9,7 @@ version = "0.1.0"
 cortex-m = "0.6.0"
 cortex-m-rt = "0.6.10"
 panic-halt = "0.2.0"
-stm32f1xx-hal = { version = "0.7.0", features = ["stm32f103", "rt"] }
+stm32f1xx-hal = { version = "0.7.0", features = ["stm32f103", "rt", "medium"] }
 cortex-m-rtic = "0.5"
 shared-bus-rtic = "0.2.2"
 ssd1351 = "0.4.0"
