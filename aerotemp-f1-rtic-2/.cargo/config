@@ -28,6 +28,8 @@ rustflags = [
   # "-C", "linker=arm-none-eabi-gcc",
   # "-C", "link-arg=-Wl,-Tlink.x",
   # "-C", "link-arg=-nostartfiles",
+  "-C", "linker=flip-link",
+  "-C", "link-arg=-Tdefmt.x",
 ]
 
 [build]
