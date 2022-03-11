@@ -35,10 +35,6 @@ mod app {
         pa0: Pin<Input<PullUp>, CRL, 'A', 0_u8>,
         pa1: Pin<Input<PullUp>, CRL, 'A', 1_u8>,
 
-        pa2: Pin<Input<PullUp>, CRL, 'A', 2_u8>,
-        pa3: Pin<Input<PullUp>, CRL, 'A', 3_u8>,
-
-        pa4: Pin<Input<PullUp>, CRL, 'A', 4_u8>,
         // queu prod
         // queue cons
         // screen
@@ -86,20 +82,6 @@ mod app {
         pa1.trigger_on_edge(&cx.device.EXTI, Edge::Rising);
         pa1.enable_interrupt(&cx.device.EXTI);
 
-        let mut pa2 = gpioa.pa2.into_pull_up_input(&mut gpioa.crl);
-        pa2.make_interrupt_source(&mut afio);
-        pa2.trigger_on_edge(&cx.device.EXTI, Edge::Rising);
-        pa2.enable_interrupt(&cx.device.EXTI);
-
-        let mut pa3 = gpioa.pa3.into_pull_up_input(&mut gpioa.crl);
-        pa3.make_interrupt_source(&mut afio);
-        pa3.trigger_on_edge(&cx.device.EXTI, Edge::Rising);
-        pa3.enable_interrupt(&cx.device.EXTI);
-
-        let mut pa4 = gpioa.pa4.into_pull_up_input(&mut gpioa.crl);
-        pa4.make_interrupt_source(&mut afio);
-        pa4.trigger_on_edge(&cx.device.EXTI, Edge::Rising);
-        pa4.enable_interrupt(&cx.device.EXTI);
 
         // Schedule the every_seconding task
         every_second::spawn_after(ONE_SEC).unwrap();
@@ -112,9 +94,6 @@ mod app {
                 counter: 0,
                 pa0,
                 pa1,
-                pa2,
-                pa3,
-                pa4,
                 
             },
             init::Monotonics(mono),
@@ -157,24 +136,6 @@ mod app {
     fn exti1(cx: exti1::Context) {
         defmt::debug!("exti1 {=bool}", cx.local.pa1.is_high());
         cx.local.pa1.clear_interrupt_pending_bit();   
-    }
-
-    #[task(binds = EXTI2, local = [pa2])]
-    fn exti2(cx: exti2::Context) {
-        defmt::debug!("exti2 {=bool}", cx.local.pa2.is_high());
-        cx.local.pa2.clear_interrupt_pending_bit();   
-    }
-
-    #[task(binds = EXTI3, local = [pa3])]
-    fn exti3(cx: exti3::Context) {
-        defmt::debug!("exti3 {=bool}", cx.local.pa3.is_high());
-        cx.local.pa3.clear_interrupt_pending_bit();   
-    }
-
-    #[task(binds = EXTI4, local = [pa4])]
-    fn exti4(cx: exti4::Context) {
-        defmt::debug!("exti4 {=bool}", cx.local.pa4.is_high());
-        cx.local.pa4.clear_interrupt_pending_bit();   
     }
 
     //fn exti, higher priority
