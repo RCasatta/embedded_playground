@@ -15,6 +15,8 @@ rtt-target = { version = "0.3.1", features = ["cortex-m"] }
 defmt = "0.3.0"
 defmt-rtt = "0.3.1"
 e-ring = { version = "0.3.0", features = ["hist"] }
+ssd1351 = "0.4.0"
+embedded-graphics = "0.7.1"
 
 
 [[bin]]

@@ -5,11 +5,34 @@
 
 use defmt_rtt as _;
 use panic_rtt_target as _;
-use rtic::app;
+use rtic::{app, Monotonic};
+use ssd1351::builder::Builder;
 use stm32f1xx_hal::gpio::gpioc::PC13;
-use stm32f1xx_hal::gpio::{Edge, ExtiPin, Output, PinState, PushPull, Pin, Input, CRL, PullUp};
+use stm32f1xx_hal::gpio::{Edge, ExtiPin, Input, Output, Pin, PinState, PullUp, PushPull, CRL};
 use stm32f1xx_hal::prelude::*;
+use stm32f1xx_hal::spi::Spi;
 use systick_monotonic::{fugit::Duration, Systick};
+
+use embedded_graphics::geometry::Point;
+use embedded_graphics::mono_font::ascii::FONT_8X13;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
+use embedded_graphics::text::Text;
+use embedded_graphics::Drawable;
+use ssd1351::mode::GraphicsMode;
+use ssd1351::prelude::SSD1351_SPI_MODE;
+use ssd1351::properties::DisplayRotation;
+
+struct Delay<'a>(&'a mut Systick<1_000>);
+
+impl<'a> embedded_hal::blocking::delay::DelayMs<u8> for Delay<'a> {
+    fn delay_ms(&mut self, ms: u8) {
+        let start = self.0.now();
+
+        let wait_for = Duration::<u64, 1, 1000>::from_ticks(ms as u64);
+        while self.0.now() - start < wait_for {}
+    }
+}
 
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [SPI1])]
 mod app {
@@ -23,8 +46,6 @@ mod app {
     // temps: [RingBuffer<Temp, 128>; 2]
     // unit
     // screen_type
-    
-
     }
 
     #[local]
@@ -34,7 +55,6 @@ mod app {
         counter: u32,
         pa0: Pin<Input<PullUp>, CRL, 'A', 0_u8>,
         pa1: Pin<Input<PullUp>, CRL, 'A', 1_u8>,
-
         // queu prod
         // queue cons
         // screen
@@ -52,11 +72,7 @@ mod app {
         let rcc = cx.device.RCC.constrain();
         let mut afio = cx.device.AFIO.constrain();
 
-        let mono = Systick::new(cx.core.SYST, 36_000_000);
-
-        //defmt::info!("Starting! (eighty={=u32})", 80u32);
-
-        let _clocks = rcc
+        let clocks = rcc
             .cfgr
             .use_hse(8.MHz())
             .sysclk(36.MHz())
@@ -82,6 +98,41 @@ mod app {
         pa1.trigger_on_edge(&cx.device.EXTI, Edge::Rising);
         pa1.enable_interrupt(&cx.device.EXTI);
 
+        // Setup display
+        defmt::debug!("Setup display");
+        let mut nss = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
+        nss.set_low();
+        let pins = (
+            gpioa.pa5.into_alternate_push_pull(&mut gpioa.crl), // sck
+            gpioa.pa6.into_floating_input(&mut gpioa.crl),      // miso
+            gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl), // mosi
+        );
+        let dc = gpioa.pa3.into_push_pull_output(&mut gpioa.crl);
+        let mut rst = gpioa.pa2.into_push_pull_output(&mut gpioa.crl);
+
+        let spi = Spi::spi1(
+            cx.device.SPI1,
+            pins,
+            &mut afio.mapr,
+            SSD1351_SPI_MODE,
+            2_000_000.Hz(),
+            clocks,
+        );
+
+        let mut display: GraphicsMode<_> = Builder::new().connect_spi(spi, dc).into();
+
+        let mono = Systick::new(cx.core.SYST, 36_000_000);
+        let mut delay = cx.device.TIM2.delay::<1000>(&clocks);
+        display.reset(&mut rst, &mut delay).unwrap();
+        defmt::debug!("display reset");
+        display.init().unwrap();
+        defmt::debug!("display init");
+        display.set_rotation(DisplayRotation::Rotate180).unwrap();
+
+        let text_style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+        Text::new("Pegaso Avionics", Point::new(4, 118), text_style)
+            .draw(&mut display)
+            .unwrap();
 
         // Schedule the every_seconding task
         every_second::spawn_after(ONE_SEC).unwrap();
@@ -94,7 +145,6 @@ mod app {
                 counter: 0,
                 pa0,
                 pa1,
-                
             },
             init::Monotonics(mono),
         )
@@ -135,7 +185,7 @@ mod app {
     #[task(binds = EXTI1, local = [pa1])]
     fn exti1(cx: exti1::Context) {
         defmt::debug!("exti1 {=bool}", cx.local.pa1.is_high());
-        cx.local.pa1.clear_interrupt_pending_bit();   
+        cx.local.pa1.clear_interrupt_pending_bit();
     }
 
     //fn exti, higher priority
