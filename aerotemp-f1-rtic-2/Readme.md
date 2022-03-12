@@ -6,3 +6,7 @@ cargo install flip-link # adds zero-cost stack overflow protection to your embed
 use defmt: https://defmt.ferrous-systems.com/
 export DEFMT_LOG=info
 
+
+to create tga with precision supported by tinytga use:
+
+convert inputimagefromgimp.tga -depth 5 workswithtinytga.tga

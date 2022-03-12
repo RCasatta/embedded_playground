@@ -1,5 +1,5 @@
 #![deny(unsafe_code)]
-//#![deny(warnings)]
+#![deny(warnings)]
 #![no_main]
 #![no_std]
 
@@ -13,26 +13,16 @@ use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::spi::Spi;
 use systick_monotonic::{fugit::Duration, Systick};
 
-use embedded_graphics::geometry::Point;
-use embedded_graphics::mono_font::ascii::FONT_8X13;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
-use embedded_graphics::text::Text;
-use embedded_graphics::Drawable;
+// use embedded_graphics::geometry::Point;
+// use embedded_graphics::mono_font::ascii::FONT_8X13;
+// use embedded_graphics::mono_font::MonoTextStyle;
+// use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
+// use embedded_graphics::text::Text;
+// use embedded_graphics::Drawable;
 use ssd1351::mode::GraphicsMode;
 use ssd1351::prelude::SSD1351_SPI_MODE;
 use ssd1351::properties::DisplayRotation;
 
-struct Delay<'a>(&'a mut Systick<1_000>);
-
-impl<'a> embedded_hal::blocking::delay::DelayMs<u8> for Delay<'a> {
-    fn delay_ms(&mut self, ms: u8) {
-        let start = self.0.now();
-
-        let wait_for = Duration::<u64, 1, 1000>::from_ticks(ms as u64);
-        while self.0.now() - start < wait_for {}
-    }
-}
 
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [SPI1])]
 mod app {
@@ -129,10 +119,10 @@ mod app {
         defmt::debug!("display init");
         display.set_rotation(DisplayRotation::Rotate180).unwrap();
 
-        let text_style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
-        Text::new("Pegaso Avionics", Point::new(4, 118), text_style)
-            .draw(&mut display)
-            .unwrap();
+        // let image_data = include_bytes!("../assets/logo_groppo_aviazione_10.tga");
+        // let tga = DynamicTga::from_slice(image_data).unwrap();
+        // let image = Image::new(&tga, Point::zero());
+        // image.draw(&mut display).unwrap();
 
         // Schedule the every_seconding task
         every_second::spawn_after(ONE_SEC).unwrap();
