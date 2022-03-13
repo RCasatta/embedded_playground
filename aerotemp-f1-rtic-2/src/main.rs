@@ -8,10 +8,12 @@ use panic_rtt_target as _;
 use rtic::app;
 use ssd1351::builder::Builder;
 use stm32f1xx_hal::gpio::gpioc::PC13;
-use stm32f1xx_hal::gpio::{Edge, ExtiPin, Input, Output, Pin, PinState, PullUp, PushPull, CRL};
+use stm32f1xx_hal::gpio::{
+    Edge, ExtiPin, Input, Output, Pin, PinExt, PinState, PullUp, PushPull, CRL,
+};
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::spi::Spi;
-use systick_monotonic::{fugit::Duration, Systick};
+use systick_monotonic::{fugit, Systick};
 
 use embedded_graphics::geometry::Point;
 use embedded_graphics::image::Image;
@@ -25,11 +27,14 @@ use ssd1351::prelude::SSD1351_SPI_MODE;
 use ssd1351::properties::DisplayRotation;
 use tinytga::{DynamicTga, Tga};
 
+type Instant = fugit::Instant<u64, 1, 1000>;
+type Duration = fugit::Duration<u64, 1, 1000>;
+
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [SPI1])]
 mod app {
     use super::*;
-
-    const ONE_SEC: Duration<u64, 1, 1000> = Duration::<u64, 1, 1000>::from_ticks(1000);
+    const ONE_SEC: Duration = Duration::from_ticks(1000);
+    const ZERO_INSTANT: Instant = Instant::from_ticks(0);
 
     #[shared]
     struct Shared {
@@ -44,8 +49,8 @@ mod app {
         led: PC13<Output<PushPull>>,
         state: bool,
         counter: u32,
-        pa0: Pin<Input<PullUp>, CRL, 'A', 0_u8>,
-        pa1: Pin<Input<PullUp>, CRL, 'A', 1_u8>,
+        pa0: Button<Pin<Input<PullUp>, CRL, 'A', 0_u8>>,
+        pa1: Button<Pin<Input<PullUp>, CRL, 'A', 1_u8>>,
         // queu prod
         // queue cons
         // screen
@@ -137,8 +142,14 @@ mod app {
                 led,
                 state: false,
                 counter: 0,
-                pa0,
-                pa1,
+                pa0: Button {
+                    pin: pa0,
+                    last: ZERO_INSTANT,
+                },
+                pa1: Button {
+                    pin: pa1,
+                    last: ZERO_INSTANT,
+                },
             },
             init::Monotonics(mono),
         )
@@ -172,23 +183,18 @@ mod app {
 
     #[task(binds = EXTI0, local = [pa0])]
     fn exti0(cx: exti0::Context) {
-        defmt::debug!(
-            "exti0 {=bool} {=u64}",
-            cx.local.pa0.is_high(),
-            monotonics::now().ticks()
-        );
-        cx.local.pa0.clear_interrupt_pending_bit();
+        if cx.local.pa0.pressed(monotonics::now()) {
+            // change screen
+            defmt::debug!("pressed");
+        }
     }
 
     #[task(binds = EXTI1, local = [pa1])]
     fn exti1(cx: exti1::Context) {
-        let now = monotonics::now();
-        defmt::debug!(
-            "exti1 {=bool} {=u64}",
-            cx.local.pa1.is_high(),
-            monotonics::now().ticks()
-        );
-        cx.local.pa1.clear_interrupt_pending_bit();
+        if cx.local.pa1.pressed(monotonics::now()) {
+            // change degree
+            defmt::debug!("pressed");
+        }
     }
 
     //fn exti, higher priority
@@ -199,4 +205,26 @@ mod app {
     // exclusive access to screen,
     // shared access to last, temps, screen_type, unit,
     // parameter/ reset (true when end period, false when end second)
+}
+
+pub struct Button<T: ExtiPin + PinExt> {
+    pub pin: T,
+    pub last: Instant,
+}
+
+impl<T: ExtiPin + PinExt> Button<T> {
+    /// update last time is pressed, return if it is passed enough time from last time
+    fn pressed(&mut self, instant: Instant) -> bool {
+        let enough_time_passed = (instant - self.last) > Duration::from_ticks(100);
+        defmt::debug!(
+            "pin{=u8} pressed at {=u64} last {=u64} enough time passed:{=bool}",
+            self.pin.pin_id(),
+            instant.ticks(),
+            self.last.ticks(),
+            enough_time_passed
+        );
+        self.last = instant;
+        self.pin.clear_interrupt_pending_bit();
+        enough_time_passed
+    }
 }
