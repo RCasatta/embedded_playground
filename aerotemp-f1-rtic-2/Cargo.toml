@@ -1,6 +1,6 @@
 [package]
 authors = ["Riccardo Casatta <riccardo@casatta.it>"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 name = "aerotemp-f1-rtic-2"
 version = "0.1.0"
@@ -17,7 +17,7 @@ defmt-rtt = "0.3.1"
 e-ring = { version = "0.3.0", features = ["hist"] }
 ssd1351 = "0.4.0"
 embedded-graphics = "0.7.1"
-#tinytga = "0.4.1"
+tinytga = "0.4.1"
 
 [[bin]]
 name = "aerotemp-f1-rtic-2"

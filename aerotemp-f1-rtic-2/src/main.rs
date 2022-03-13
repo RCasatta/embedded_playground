@@ -1,11 +1,11 @@
 #![deny(unsafe_code)]
-#![deny(warnings)]
+// #![deny(warnings)]
 #![no_main]
 #![no_std]
 
 use defmt_rtt as _;
 use panic_rtt_target as _;
-use rtic::{app, Monotonic};
+use rtic::app;
 use ssd1351::builder::Builder;
 use stm32f1xx_hal::gpio::gpioc::PC13;
 use stm32f1xx_hal::gpio::{Edge, ExtiPin, Input, Output, Pin, PinState, PullUp, PushPull, CRL};
@@ -13,16 +13,17 @@ use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::spi::Spi;
 use systick_monotonic::{fugit::Duration, Systick};
 
-// use embedded_graphics::geometry::Point;
-// use embedded_graphics::mono_font::ascii::FONT_8X13;
-// use embedded_graphics::mono_font::MonoTextStyle;
-// use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
-// use embedded_graphics::text::Text;
-// use embedded_graphics::Drawable;
+use embedded_graphics::geometry::Point;
+use embedded_graphics::image::Image;
+use embedded_graphics::mono_font::ascii::FONT_8X13;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::pixelcolor::{Rgb555, RgbColor};
+use embedded_graphics::text::Text;
+use embedded_graphics::Drawable;
 use ssd1351::mode::GraphicsMode;
 use ssd1351::prelude::SSD1351_SPI_MODE;
 use ssd1351::properties::DisplayRotation;
-
+use tinytga::{DynamicTga, Tga};
 
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [SPI1])]
 mod app {
@@ -119,10 +120,13 @@ mod app {
         defmt::debug!("display init");
         display.set_rotation(DisplayRotation::Rotate180).unwrap();
 
-        // let image_data = include_bytes!("../assets/logo_groppo_aviazione_10.tga");
-        // let tga = DynamicTga::from_slice(image_data).unwrap();
-        // let image = Image::new(&tga, Point::zero());
-        // image.draw(&mut display).unwrap();
+        let image_data = include_bytes!("../assets/logo_groppo_aviazione_128x128.tga");
+        let tga = DynamicTga::from_slice(image_data).unwrap();
+        defmt::debug!("loading dynamic image");
+
+        let image = Image::new(&tga, Point::zero());
+        image.draw(&mut display).unwrap();
+        defmt::debug!("draw image");
 
         // Schedule the every_seconding task
         every_second::spawn_after(ONE_SEC).unwrap();
@@ -168,13 +172,22 @@ mod app {
 
     #[task(binds = EXTI0, local = [pa0])]
     fn exti0(cx: exti0::Context) {
-        defmt::debug!("exti0 {=bool}", cx.local.pa0.is_high());
+        defmt::debug!(
+            "exti0 {=bool} {=u64}",
+            cx.local.pa0.is_high(),
+            monotonics::now().ticks()
+        );
         cx.local.pa0.clear_interrupt_pending_bit();
     }
 
     #[task(binds = EXTI1, local = [pa1])]
     fn exti1(cx: exti1::Context) {
-        defmt::debug!("exti1 {=bool}", cx.local.pa1.is_high());
+        let now = monotonics::now();
+        defmt::debug!(
+            "exti1 {=bool} {=u64}",
+            cx.local.pa1.is_high(),
+            monotonics::now().ticks()
+        );
         cx.local.pa1.clear_interrupt_pending_bit();
     }
 
