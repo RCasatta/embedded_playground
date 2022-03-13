@@ -3,32 +3,33 @@
 #![no_main]
 #![no_std]
 
+mod button;
+mod screen;
+mod unit;
+
 use defmt_rtt as _;
 use panic_rtt_target as _;
 use rtic::app;
 use ssd1351::builder::Builder;
 use stm32f1xx_hal::gpio::gpioc::PC13;
-use stm32f1xx_hal::gpio::{
-    Edge, ExtiPin, Input, Output, Pin, PinExt, PinState, PullUp, PushPull, CRL,
-};
+use stm32f1xx_hal::gpio::{Edge, ExtiPin, Input, Output, Pin, PinState, PullUp, PushPull, CRL};
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::spi::Spi;
 use systick_monotonic::{fugit, Systick};
 
+use button::Button;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::image::Image;
-use embedded_graphics::mono_font::ascii::FONT_8X13;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::pixelcolor::{Rgb555, RgbColor};
-use embedded_graphics::text::Text;
 use embedded_graphics::Drawable;
+use screen::Screen;
 use ssd1351::mode::GraphicsMode;
 use ssd1351::prelude::SSD1351_SPI_MODE;
 use ssd1351::properties::DisplayRotation;
-use tinytga::{DynamicTga, Tga};
+use tinytga::DynamicTga;
+use unit::Unit;
 
-type Instant = fugit::Instant<u64, 1, 1000>;
-type Duration = fugit::Duration<u64, 1, 1000>;
+pub type Instant = fugit::Instant<u64, 1, 1000>;
+pub type Duration = fugit::Duration<u64, 1, 1000>;
 
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [SPI1])]
 mod app {
@@ -39,9 +40,9 @@ mod app {
     #[shared]
     struct Shared {
         // last: [Temp; 2] // temperature read last second
-    // temps: [RingBuffer<Temp, 128>; 2]
-    // unit
-    // screen_type
+        // temps: [RingBuffer<Temp, 128>; 2]
+        unit: Unit,
+        screen: Screen,
     }
 
     #[local]
@@ -137,7 +138,10 @@ mod app {
         every_second::spawn_after(ONE_SEC).unwrap();
 
         (
-            Shared {},
+            Shared {
+                unit: Unit::Celsius,
+                screen: Screen::Both,
+            },
             Local {
                 led,
                 state: false,
@@ -181,19 +185,23 @@ mod app {
         every_second::spawn_after(ONE_SEC).unwrap();
     }
 
-    #[task(binds = EXTI0, local = [pa0])]
-    fn exti0(cx: exti0::Context) {
+    #[task(binds = EXTI0, local = [pa0], shared=[screen])]
+    fn exti0(mut cx: exti0::Context) {
         if cx.local.pa0.pressed(monotonics::now()) {
-            // change screen
-            defmt::debug!("pressed");
+            cx.shared.screen.lock(|s| {
+                s.next();
+                defmt::debug!("screen {}", s);
+            });
         }
     }
 
-    #[task(binds = EXTI1, local = [pa1])]
-    fn exti1(cx: exti1::Context) {
+    #[task(binds = EXTI1, local = [pa1], shared=[unit])]
+    fn exti1(mut cx: exti1::Context) {
         if cx.local.pa1.pressed(monotonics::now()) {
-            // change degree
-            defmt::debug!("pressed");
+            cx.shared.unit.lock(|u| {
+                u.next();
+                defmt::debug!("unit {}", u);
+            });
         }
     }
 
@@ -205,26 +213,4 @@ mod app {
     // exclusive access to screen,
     // shared access to last, temps, screen_type, unit,
     // parameter/ reset (true when end period, false when end second)
-}
-
-pub struct Button<T: ExtiPin + PinExt> {
-    pub pin: T,
-    pub last: Instant,
-}
-
-impl<T: ExtiPin + PinExt> Button<T> {
-    /// update last time is pressed, return if it is passed enough time from last time
-    fn pressed(&mut self, instant: Instant) -> bool {
-        let enough_time_passed = (instant - self.last) > Duration::from_ticks(100);
-        defmt::debug!(
-            "pin{=u8} pressed at {=u64} last {=u64} enough time passed:{=bool}",
-            self.pin.pin_id(),
-            instant.ticks(),
-            self.last.ticks(),
-            enough_time_passed
-        );
-        self.last = instant;
-        self.pin.clear_interrupt_pending_bit();
-        enough_time_passed
-    }
 }
