@@ -11,35 +11,31 @@ mod unit;
 use defmt_rtt as _;
 use panic_rtt_target as _;
 use rtic::app;
-use ssd1351::builder::Builder;
-use stm32f1xx_hal::gpio::gpioc::PC13;
-use stm32f1xx_hal::gpio::{Edge, ExtiPin, Output, PinState, PushPull};
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::spi::Spi;
-use systick_monotonic::Systick;
 
-use button::Button;
-use embedded_graphics::geometry::Point;
-use embedded_graphics::image::Image;
-use embedded_graphics::Drawable;
-use screen::Screen;
-use ssd1351::mode::GraphicsMode;
-use ssd1351::prelude::SSD1351_SPI_MODE;
-use ssd1351::properties::DisplayRotation;
-use tinytga::DynamicTga;
-use types::*;
-use unit::Unit;
-
-#[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [SPI1])]
+#[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [TAMPER])]
 mod app {
-    use super::*;
-    const ONE_SEC: Duration = Duration::from_ticks(1000);
-    const ZERO_INSTANT: Instant = Instant::from_ticks(0);
+
+    use ssd1351::builder::Builder;
+    use stm32f1xx_hal::gpio::gpioc::PC13;
+    use stm32f1xx_hal::gpio::{Edge, ExtiPin, Output, PinState, PushPull};
+    use stm32f1xx_hal::prelude::*;
+    use stm32f1xx_hal::spi::Spi;
+    use systick_monotonic::Systick;
+
+    use crate::button::Button;
+    use crate::screen::Screen;
+    use crate::types::*;
+    use crate::unit::Unit;
+    use embedded_graphics::geometry::Point;
+    use embedded_graphics::image::Image;
+    use embedded_graphics::Drawable;
+    use ssd1351::mode::GraphicsMode;
+    use ssd1351::prelude::SSD1351_SPI_MODE;
+    use ssd1351::properties::DisplayRotation;
+    use tinytga::DynamicTga;
 
     #[shared]
     struct Shared {
-        // last: [Temp; 2] // temperature read last second
-        // temps: [RingBuffer<Temp, 128>; 2]
         unit: Unit,
         screen: Screen,
     }
@@ -48,12 +44,11 @@ mod app {
     struct Local {
         led: PC13<Output<PushPull>>,
         state: bool,
-        counter: u32,
+        seconds: usize,
         pa0: Button<PA0>,
         pa1: Button<PA1>,
         display: Display,
-        // queu prod
-        // queue cons
+        latest_period: [[Temp; 2]; PERIOD],
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -133,7 +128,7 @@ mod app {
         image.draw(&mut display).unwrap();
         defmt::debug!("draw image");
 
-        // Schedule the every_seconding task
+        // Schedule the every_second task
         every_second::spawn_after(ONE_SEC).unwrap();
 
         (
@@ -144,7 +139,8 @@ mod app {
             Local {
                 led,
                 state: false,
-                counter: 0,
+                seconds: 0,
+                latest_period: [[0,0]; PERIOD],
                 pa0: Button {
                     pin: pa0,
                     last: ZERO_INSTANT,
@@ -159,25 +155,19 @@ mod app {
         )
     }
 
-    //#[task(local = [led, state, counter])]
-    //fn every_period(cx: every_second::Context) {
-    //consume the queue, insert in array
-    // call draw(true)
-    //}
 
     #[task(local = [display])]
-    fn draw(_cx: draw::Context) {
+    fn draw(_cx: draw::Context, _last: Temps, _average: Option<Temps> ) {
         defmt::debug!("draw");
     }
 
-    #[task(local = [led, state, counter])]
+    #[task(local = [led, state, seconds, latest_period])]
     fn every_second(cx: every_second::Context) {
-        defmt::debug!("every_second {=u32}", cx.local.counter);
+        every_second::spawn_after(ONE_SEC).unwrap();
 
-        // shared last
-        // run every second
-        // save temps in queue https://rtic.rs/1/book/en/by-example/tips_static_lifetimes.html
-        *cx.local.counter += 1;
+        let current = *cx.local.seconds;
+        defmt::debug!("every_second {=u32}", current);
+
         if *cx.local.state {
             cx.local.led.set_high();
             *cx.local.state = false;
@@ -186,8 +176,23 @@ mod app {
             *cx.local.state = true;
         }
 
-        //call draw(true)
-        every_second::spawn_after(ONE_SEC).unwrap();
+        //TODO read from sensors
+        let temps = [current as i16, current as i16];
+
+        cx.local.latest_period[current % PERIOD] = temps.clone();
+        let average = if ((current + 1) % PERIOD) == 0 {
+            let acc = cx.local.latest_period.iter().fold([0i32; 2], |acc, x| {
+                [acc[0] + x[0] as i32, acc[1] + x[1] as i32]
+            });
+            Some([
+                (acc[0] / PERIOD as i32) as i16,
+                (acc[1] / PERIOD as i32) as i16,
+            ])
+        } else {
+            None
+        };
+
+        draw::spawn(temps, average).unwrap();
     }
 
     #[task(binds = EXTI0, local = [pa0], shared=[screen])]

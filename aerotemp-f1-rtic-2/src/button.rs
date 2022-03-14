@@ -1,4 +1,4 @@
-use crate::{Duration, Instant};
+use crate::types::{Duration, Instant};
 use stm32f1xx_hal::gpio::{ExtiPin, PinExt};
 
 pub struct Button<T: ExtiPin + PinExt> {
