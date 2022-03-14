@@ -5,6 +5,7 @@
 
 mod button;
 mod screen;
+mod types;
 mod unit;
 
 use defmt_rtt as _;
@@ -12,10 +13,10 @@ use panic_rtt_target as _;
 use rtic::app;
 use ssd1351::builder::Builder;
 use stm32f1xx_hal::gpio::gpioc::PC13;
-use stm32f1xx_hal::gpio::{Edge, ExtiPin, Input, Output, Pin, PinState, PullUp, PushPull, CRL};
+use stm32f1xx_hal::gpio::{Edge, ExtiPin, Output, PinState, PushPull};
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::spi::Spi;
-use systick_monotonic::{fugit, Systick};
+use systick_monotonic::Systick;
 
 use button::Button;
 use embedded_graphics::geometry::Point;
@@ -26,10 +27,8 @@ use ssd1351::mode::GraphicsMode;
 use ssd1351::prelude::SSD1351_SPI_MODE;
 use ssd1351::properties::DisplayRotation;
 use tinytga::DynamicTga;
+use types::*;
 use unit::Unit;
-
-pub type Instant = fugit::Instant<u64, 1, 1000>;
-pub type Duration = fugit::Duration<u64, 1, 1000>;
 
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [SPI1])]
 mod app {
@@ -50,11 +49,11 @@ mod app {
         led: PC13<Output<PushPull>>,
         state: bool,
         counter: u32,
-        pa0: Button<Pin<Input<PullUp>, CRL, 'A', 0_u8>>,
-        pa1: Button<Pin<Input<PullUp>, CRL, 'A', 1_u8>>,
+        pa0: Button<PA0>,
+        pa1: Button<PA1>,
+        display: Display,
         // queu prod
         // queue cons
-        // screen
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -154,6 +153,7 @@ mod app {
                     pin: pa1,
                     last: ZERO_INSTANT,
                 },
+                display,
             },
             init::Monotonics(mono),
         )
@@ -164,6 +164,11 @@ mod app {
     //consume the queue, insert in array
     // call draw(true)
     //}
+
+    #[task(local = [display])]
+    fn draw(_cx: draw::Context) {
+        defmt::debug!("draw");
+    }
 
     #[task(local = [led, state, counter])]
     fn every_second(cx: every_second::Context) {
@@ -204,10 +209,6 @@ mod app {
             });
         }
     }
-
-    //fn exti, higher priority
-    // detect button press
-    // change screen_type and unit
 
     // fn draw
     // exclusive access to screen,
