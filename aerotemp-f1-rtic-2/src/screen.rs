@@ -6,7 +6,7 @@ use embedded_graphics::prelude::{Point, RgbColor};
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
 
-use crate::types::{Display, Queue, Temps, PERIOD};
+use crate::types::{Display, Queue, Temps, PERIOD, TITLES};
 
 use crate::unit::Unit;
 
@@ -19,9 +19,9 @@ pub enum ScreenType {
 impl ScreenType {
     pub fn next(&mut self) -> Self {
         *self = match self {
-            ScreenType::Both => ScreenType::Single(true),
-            ScreenType::Single(true) => ScreenType::Single(false),
-            ScreenType::Single(false) => ScreenType::Both,
+            ScreenType::Both => ScreenType::Single(false),
+            ScreenType::Single(false) => ScreenType::Single(true),
+            ScreenType::Single(true) => ScreenType::Both,
         };
         *self
     }
@@ -39,6 +39,7 @@ pub enum ModelChange {
     LastAndAverage(Temps, Temps),
     Unit(Unit),
     ScreenType(ScreenType),
+    Clear,
 }
 
 #[derive(Default)]
@@ -57,11 +58,13 @@ impl Model {
             ModelChange::Last(last) => {
                 if last != self.last {
                     self.changed = false;
+                    self.clear = false;
                     self.last = last
                 }
             }
             ModelChange::LastAndAverage(last, average) => {
                 self.changed = true;
+                self.clear = false;
                 self.last = last;
                 if self.history.len() == PERIOD {
                     self.history.dequeue();
@@ -78,19 +81,36 @@ impl Model {
                 self.clear = true;
                 self.screen_type = screen_type;
             }
+            ModelChange::Clear => {
+                self.changed = true;
+                self.clear = true;
+            }
         }
     }
 }
 
 /// Draw the texts that needs only to be re-drawn only on reset
-pub fn _draw_titles<const N: usize>(display: &mut Display, _screen_type: ScreenType) {
+pub fn draw_titles(display: &mut Display, screen_type: ScreenType) {
     let text_style_small = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
 
-    Text::with_baseline("OAT", Point::new(0, 0), text_style_small, Baseline::Top)
-        .draw(display)
-        .unwrap();
-
-    Text::with_baseline("CAT", Point::new(0, 60), text_style_small, Baseline::Top)
-        .draw(display)
-        .unwrap();
+    match screen_type {
+        ScreenType::Both => {
+            for i in 0..2usize {
+                Text::with_baseline(
+                    TITLES[i],
+                    Point::new(0, i as i32 * 64),
+                    text_style_small,
+                    Baseline::Top,
+                )
+                .draw(display)
+                .unwrap();
+            }
+        }
+        ScreenType::Single(i) => {
+            let i = i as usize;
+            Text::with_baseline(TITLES[i], Point::new(0, 0), text_style_small, Baseline::Top)
+                .draw(display)
+                .unwrap();
+        }
+    }
 }

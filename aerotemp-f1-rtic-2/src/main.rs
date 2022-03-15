@@ -22,7 +22,7 @@ mod app {
     use systick_monotonic::Systick;
 
     use crate::button::Button;
-    use crate::screen::{Model, ModelChange, ScreenType};
+    use crate::screen::{draw_titles, Model, ModelChange, ScreenType};
     use crate::types::*;
     use crate::unit::Unit;
     use embedded_graphics::geometry::Point;
@@ -153,6 +153,9 @@ mod app {
 
         let current = *cx.local.seconds;
         defmt::debug!("every_second {=usize}", current);
+        if current == 0 {
+            draw::spawn(ModelChange::Clear).unwrap();
+        }
 
         //TODO read from sensors
         let temps = [current as i16, current as i16];
@@ -175,11 +178,11 @@ mod app {
         *cx.local.seconds += 1;
     }
 
-    #[task(local = [display, model])]
+    #[task(capacity = 2, local = [display, model])]
     fn draw(cx: draw::Context, changes: ModelChange) {
         defmt::debug!("draw {}", changes);
         let model = cx.local.model;
-        let display = cx.local.display;
+        let mut display = cx.local.display;
         // let mut buffer = heapless::String::<32>::new();
 
         model.apply(changes);
@@ -187,7 +190,7 @@ mod app {
         if model.changed {
             if model.clear {
                 display.clear();
-                // draw titles
+                draw_titles(&mut display, model.screen_type);
             }
             // draw temp
         }
