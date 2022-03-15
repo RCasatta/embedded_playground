@@ -16,14 +16,13 @@ use rtic::app;
 mod app {
 
     use ssd1351::builder::Builder;
-    use stm32f1xx_hal::gpio::gpioc::PC13;
-    use stm32f1xx_hal::gpio::{Edge, ExtiPin, Output, PinState, PushPull};
+    use stm32f1xx_hal::gpio::{Edge, ExtiPin};
     use stm32f1xx_hal::prelude::*;
     use stm32f1xx_hal::spi::Spi;
     use systick_monotonic::Systick;
 
     use crate::button::Button;
-    use crate::screen::Screen;
+    use crate::screen::{Model, ModelChange, ScreenType};
     use crate::types::*;
     use crate::unit::Unit;
     use embedded_graphics::geometry::Point;
@@ -35,20 +34,20 @@ mod app {
     use tinytga::DynamicTga;
 
     #[shared]
-    struct Shared {
-        unit: Unit,
-        screen: Screen,
-    }
+    struct Shared {}
 
     #[local]
     struct Local {
-        led: PC13<Output<PushPull>>,
-        state: bool,
         seconds: usize,
         pa0: Button<PA0>,
         pa1: Button<PA1>,
         display: Display,
-        latest_period: [[Temp; 2]; PERIOD],
+        latest_period: [Temps; PERIOD],
+
+        unit: Unit,
+        screen: ScreenType,
+
+        model: Model,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -69,12 +68,6 @@ mod app {
             .sysclk(36.MHz())
             .pclk1(36.MHz())
             .freeze(&mut flash.acr);
-
-        // Setup LED
-        let mut gpioc = cx.device.GPIOC.split();
-        let led = gpioc
-            .pc13
-            .into_push_pull_output_with_state(&mut gpioc.crh, PinState::Low);
 
         // Setup Buttons
         let mut gpioa = cx.device.GPIOA.split();
@@ -132,15 +125,10 @@ mod app {
         every_second::spawn_after(ONE_SEC).unwrap();
 
         (
-            Shared {
-                unit: Unit::Celsius,
-                screen: Screen::Both,
-            },
+            Shared {},
             Local {
-                led,
-                state: false,
                 seconds: 0,
-                latest_period: [[0,0]; PERIOD],
+                latest_period: [[0, 0]; PERIOD],
                 pa0: Button {
                     pin: pa0,
                     last: ZERO_INSTANT,
@@ -150,73 +138,76 @@ mod app {
                     last: ZERO_INSTANT,
                 },
                 display,
+
+                unit: Unit::Celsius,
+                screen: ScreenType::Both,
+                model: Model::default(),
             },
             init::Monotonics(mono),
         )
     }
 
-
-    #[task(local = [display])]
-    fn draw(_cx: draw::Context, _last: Temps, _average: Option<Temps> ) {
-        defmt::debug!("draw");
-    }
-
-    #[task(local = [led, state, seconds, latest_period])]
+    #[task(local = [seconds, latest_period])]
     fn every_second(cx: every_second::Context) {
         every_second::spawn_after(ONE_SEC).unwrap();
 
         let current = *cx.local.seconds;
-        defmt::debug!("every_second {=u32}", current);
-
-        if *cx.local.state {
-            cx.local.led.set_high();
-            *cx.local.state = false;
-        } else {
-            cx.local.led.set_low();
-            *cx.local.state = true;
-        }
+        defmt::debug!("every_second {=usize}", current);
 
         //TODO read from sensors
         let temps = [current as i16, current as i16];
 
         cx.local.latest_period[current % PERIOD] = temps.clone();
-        let average = if ((current + 1) % PERIOD) == 0 {
+        let change = if ((current + 1) % PERIOD) == 0 {
             let acc = cx.local.latest_period.iter().fold([0i32; 2], |acc, x| {
                 [acc[0] + x[0] as i32, acc[1] + x[1] as i32]
             });
-            Some([
+            let average = [
                 (acc[0] / PERIOD as i32) as i16,
                 (acc[1] / PERIOD as i32) as i16,
-            ])
+            ];
+            ModelChange::LastAndAverage(temps, average)
         } else {
-            None
+            ModelChange::Last(temps)
         };
 
-        draw::spawn(temps, average).unwrap();
+        draw::spawn(change).unwrap();
+        *cx.local.seconds += 1;
     }
 
-    #[task(binds = EXTI0, local = [pa0], shared=[screen])]
-    fn exti0(mut cx: exti0::Context) {
+    #[task(local = [display, model])]
+    fn draw(cx: draw::Context, changes: ModelChange) {
+        defmt::debug!("draw {}", changes);
+        let model = cx.local.model;
+        let display = cx.local.display;
+        // let mut buffer = heapless::String::<32>::new();
+
+        model.apply(changes);
+
+        if model.changed {
+            if model.clear {
+                display.clear();
+                // draw titles
+            }
+            // draw temp
+        }
+    }
+
+    #[task(binds = EXTI0, local = [pa0, screen])]
+    fn exti0(cx: exti0::Context) {
         if cx.local.pa0.pressed(monotonics::now()) {
-            cx.shared.screen.lock(|s| {
-                s.next();
-                defmt::debug!("screen {}", s);
-            });
+            let new = cx.local.screen.next();
+            defmt::debug!("screen {}", new);
+            draw::spawn(ModelChange::ScreenType(new)).unwrap();
         }
     }
 
-    #[task(binds = EXTI1, local = [pa1], shared=[unit])]
-    fn exti1(mut cx: exti1::Context) {
+    #[task(binds = EXTI1, local = [pa1, unit])]
+    fn exti1(cx: exti1::Context) {
         if cx.local.pa1.pressed(monotonics::now()) {
-            cx.shared.unit.lock(|u| {
-                u.next();
-                defmt::debug!("unit {}", u);
-            });
+            let new = cx.local.unit.next();
+            defmt::debug!("unit {}", new);
+            draw::spawn(ModelChange::Unit(new)).unwrap();
         }
     }
-
-    // fn draw
-    // exclusive access to screen,
-    // shared access to last, temps, screen_type, unit,
-    // parameter/ reset (true when end period, false when end second)
 }

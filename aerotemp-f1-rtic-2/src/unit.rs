@@ -2,7 +2,7 @@ use core::fmt;
 
 use defmt::Format;
 
-#[derive(Copy, Clone, Format)]
+#[derive(Copy, Clone, Format, Debug)]
 pub enum Unit {
     Celsius,
     Fahrenheit,
@@ -17,11 +17,18 @@ impl fmt::Display for Unit {
     }
 }
 
+impl Default for Unit {
+    fn default() -> Self {
+        Unit::Celsius
+    }
+}
+
 impl Unit {
-    pub fn next(&mut self) {
+    pub fn next(&mut self) -> Self {
         *self = match self {
             Unit::Celsius => Unit::Fahrenheit,
             Unit::Fahrenheit => Unit::Celsius,
-        }
+        };
+        *self
     }
 }

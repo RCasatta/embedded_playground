@@ -20,6 +20,7 @@ pub type SPI1 = spi::Spi<pac::SPI1, Spi1NoRemap, (PA5, PA6, PA7), u8>;
 
 pub type Display = GraphicsMode<SpiInterface<SPI1, PA3>>;
 
+pub type Queue<T> = heapless::spsc::Queue<T, PERIOD>;
 
 pub type Temp = i16;
 pub type Temps = [Temp; 2];
