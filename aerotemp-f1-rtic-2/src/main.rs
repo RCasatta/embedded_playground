@@ -4,6 +4,7 @@
 #![no_std]
 
 mod button;
+mod hist;
 mod screen;
 mod types;
 mod unit;
@@ -22,17 +23,16 @@ mod app {
     use systick_monotonic::Systick;
 
     use crate::button::Button;
-    use crate::screen::{draw_titles, Model, ModelChange, ScreenType};
+    use crate::hist::Hist;
+    use crate::screen::{draw_titles, small_text, Model, ModelChange, ScreenType};
     use crate::types::*;
     use crate::unit::{format_100, Unit};
     use core::fmt::Write;
+    use embedded_graphics::geometry::{Point, Size};
     use embedded_graphics::image::Image;
-    use embedded_graphics::mono_font::ascii::FONT_8X13;
-    use embedded_graphics::mono_font::MonoTextStyle;
-    use embedded_graphics::pixelcolor::Rgb565;
-    use embedded_graphics::prelude::{Point, RgbColor};
-    use embedded_graphics::text::{Baseline, Text};
+    use embedded_graphics::prelude::RgbColor;
     use embedded_graphics::Drawable;
+
     use heapless::String;
     use ssd1351::mode::GraphicsMode;
     use ssd1351::prelude::SSD1351_SPI_MODE;
@@ -188,7 +188,6 @@ mod app {
     fn draw(cx: draw::Context, changes: ModelChange) {
         defmt::debug!("draw {}", changes);
 
-        let text_style_small = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
         let model = cx.local.model;
         let mut display = cx.local.display;
         let mut buffer = cx.local.buffer;
@@ -208,43 +207,25 @@ mod app {
                     for i in 0..2 {
                         format_100(last[i], &mut buffer);
                         write!(buffer, "{}", model.unit).unwrap();
-                        Text::with_baseline(
-                            buffer.as_str(),
-                            Point::new(0, 15 + i as i32 * 64),
-                            text_style_small,
-                            Baseline::Top,
-                        )
-                        .draw(display)
-                        .unwrap();
-                        buffer.clear();
+                        small_text(display, buffer, 0, 15 + i as i32 * 64);
+
+                        let hist = Hist::new(Point::new(0, 25), Size::new(128, 30));
+                        hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
+                            .unwrap();
                     }
                 }
                 ScreenType::Single(i) => {
                     let i = i as usize;
                     format_100(last[i], &mut buffer);
                     write!(buffer, "{}", model.unit).unwrap();
-                    Text::with_baseline(
-                        buffer.as_str(),
-                        Point::new(0, 15 + i as i32 * 64),
-                        text_style_small,
-                        Baseline::Top,
-                    )
-                    .draw(display)
-                    .unwrap();
-                    buffer.clear();
-
+                    small_text(display, buffer, 0, 15 + i as i32 * 64);
+                    let hist = Hist::new(Point::new(0, 25), Size::new(128, 50));
+                    hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
+                        .unwrap();
                     for b in 0..2 {
                         buffer.push_str(MIN_OR_MAX[b]).unwrap();
                         format_100(model.min_or_max_converted(b != 0, i), &mut buffer);
-                        Text::with_baseline(
-                            buffer.as_str(),
-                            Point::new(0, 25 + i as i32 * 64),
-                            text_style_small,
-                            Baseline::Top,
-                        )
-                        .draw(display)
-                        .unwrap();
-                        buffer.clear();
+                        small_text(display, buffer, 0, 25 + i as i32 * 64);
                     }
                 }
             }

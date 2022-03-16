@@ -5,6 +5,7 @@ use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::{Point, RgbColor};
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
+use heapless::String;
 
 use crate::types::{Display, Queue, Temp, Temps, PERIOD, TITLES};
 
@@ -47,7 +48,7 @@ pub struct Model {
     pub last: Temps,
     pub mins: Temps,
     pub maxs: Temps,
-    pub history: Queue<Temps>,
+    pub history: [Queue<Temp>; 2],
     pub unit: Unit,
     pub screen_type: ScreenType,
     pub changed: bool,
@@ -76,10 +77,12 @@ impl Model {
                 self.clear = false;
                 self.last = last;
                 self.update_min_max(last);
-                if self.history.len() == PERIOD {
-                    self.history.dequeue();
+                for i in 0..2 {
+                    if self.history[i].len() == PERIOD {
+                        self.history[i].dequeue();
+                    }
+                    self.history[i].enqueue(average[i]).unwrap();
                 }
-                self.history.enqueue(average).unwrap();
             }
             ModelChange::Unit(unit) => {
                 self.changed = true;
@@ -144,4 +147,13 @@ pub fn draw_titles(display: &mut Display, screen_type: ScreenType) {
                 .unwrap();
         }
     }
+}
+
+pub fn small_text<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
+    let text_style_small = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+    let p = Point::new(x, y);
+    Text::with_baseline(buffer.as_str(), p, text_style_small, Baseline::Top)
+        .draw(display)
+        .unwrap();
+    buffer.clear()
 }
