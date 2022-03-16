@@ -29,3 +29,4 @@ pub const PERIOD: usize = 30;
 pub const ONE_SEC: Duration = Duration::from_ticks(1_000);
 pub const ZERO_INSTANT: Instant = Instant::from_ticks(0);
 pub const TITLES: [&'static str; 2] = ["OAT", "CAT"];
+pub const MIN_OR_MAX: [&'static str; 2] = ["min:", "max:"];
