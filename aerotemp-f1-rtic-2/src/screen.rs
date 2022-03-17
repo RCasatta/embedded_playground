@@ -1,3 +1,5 @@
+use core::str::FromStr;
+
 use defmt::Format;
 use embedded_graphics::mono_font::ascii::FONT_8X13;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -125,34 +127,24 @@ impl Model {
 
 /// Draw the texts that needs only to be re-drawn only on reset
 pub fn draw_titles(display: &mut Display, screen_type: ScreenType) {
-    let text_style_small = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
-
     match screen_type {
         ScreenType::Both => {
             for i in 0..2usize {
-                Text::with_baseline(
-                    TITLES[i],
-                    Point::new(0, i as i32 * 64),
-                    text_style_small,
-                    Baseline::Top,
-                )
-                .draw(display)
-                .unwrap();
+                let mut title = String::<10>::from_str(TITLES[i]).unwrap();
+                text(display, &mut title, 0, i as i32 * 64);
             }
         }
         ScreenType::Single(i) => {
-            let i = i as usize;
-            Text::with_baseline(TITLES[i], Point::new(0, 0), text_style_small, Baseline::Top)
-                .draw(display)
-                .unwrap();
+            let mut title = String::<10>::from_str(TITLES[i as usize]).unwrap();
+            text(display, &mut title, 0, 0);
         }
     }
 }
 
-pub fn small_text<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
-    let text_style_small = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+pub fn text<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
+    let style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
     let p = Point::new(x, y);
-    Text::with_baseline(buffer.as_str(), p, text_style_small, Baseline::Top)
+    Text::with_baseline(buffer.as_str(), p, style, Baseline::Top)
         .draw(display)
         .unwrap();
     buffer.clear()
