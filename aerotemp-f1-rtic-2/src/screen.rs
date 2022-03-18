@@ -5,6 +5,7 @@ use embedded_graphics::mono_font::ascii::FONT_8X13;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::{Point, RgbColor};
+use embedded_graphics::text::renderer::{CharacterStyle, TextRenderer};
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
 use heapless::String;
@@ -67,11 +68,13 @@ impl Model {
     pub fn apply(&mut self, changes: ModelChange) {
         match changes {
             ModelChange::Last(last) => {
+                self.clear = false;
                 if last != self.last {
-                    self.changed = false;
-                    self.clear = false;
+                    self.changed = true;
                     self.last = last;
                     self.update_min_max(last);
+                } else {
+                    self.changed = false;
                 }
             }
             ModelChange::LastAndAverage(last, average) => {
@@ -131,21 +134,37 @@ pub fn draw_titles(display: &mut Display, screen_type: ScreenType) {
         ScreenType::Both => {
             for i in 0..2usize {
                 let mut title = String::<10>::from_str(TITLES[i]).unwrap();
-                text(display, &mut title, 0, i as i32 * 64);
+                text_small_white(display, &mut title, 0, i as i32 * 64);
             }
         }
         ScreenType::Single(i) => {
             let mut title = String::<10>::from_str(TITLES[i as usize]).unwrap();
-            text(display, &mut title, 0, 0);
+            text_small_white(display, &mut title, 0, 0);
         }
     }
 }
 
-pub fn text<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
-    let style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+pub fn text<const N: usize, S: TextRenderer<Color = Rgb565>>(
+    display: &mut Display,
+    buffer: &mut String<N>,
+    x: i32,
+    y: i32,
+    style: S,
+) {
     let p = Point::new(x, y);
     Text::with_baseline(buffer.as_str(), p, style, Baseline::Top)
         .draw(display)
         .unwrap();
     buffer.clear()
+}
+
+pub fn text_small_white<const N: usize>(
+    display: &mut Display,
+    buffer: &mut String<N>,
+    x: i32,
+    y: i32,
+) {
+    let mut style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+    style.set_background_color(Some(Rgb565::BLACK));
+    text(display, buffer, x, y, style)
 }

@@ -24,7 +24,7 @@ mod app {
 
     use crate::button::Button;
     use crate::hist::Hist;
-    use crate::screen::{draw_titles, text, Model, ModelChange, ScreenType};
+    use crate::screen::{draw_titles, text_small_white, Model, ModelChange, ScreenType};
     use crate::types::*;
     use crate::unit::{format_100, Unit};
     use core::fmt::Write;
@@ -206,24 +206,24 @@ mod app {
                     for i in 0..2 {
                         format_100(last[i], &mut buffer);
                         write!(buffer, "{}", model.unit).unwrap();
-                        text(display, buffer, 0, 15 + i as i32 * 64);
-                        let hist = Hist::new(Point::new(0, 25), Size::new(128, 30));
-                        hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
-                            .unwrap();
+                        text_small_white(display, buffer, 0, 15 + i as i32 * 64);
+                        // let hist = Hist::new(Point::new(0, 25), Size::new(128, 30));
+                        // hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
+                        //     .unwrap();
                     }
                 }
                 ScreenType::Single(i) => {
                     let i = i as usize;
                     format_100(last[i], &mut buffer);
                     write!(buffer, "{}", model.unit).unwrap();
-                    text(display, buffer, 0, 15 + i as i32 * 64);
-                    let hist = Hist::new(Point::new(0, 25), Size::new(128, 50));
-                    hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
-                        .unwrap();
+                    text_small_white(display, buffer, 0, 15);
+                    // let hist = Hist::new(Point::new(0, 25), Size::new(128, 50));
+                    // hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
+                    //     .unwrap();
                     for b in 0..2 {
                         buffer.push_str(MIN_OR_MAX[b]).unwrap();
                         format_100(model.min_or_max_converted(b != 0, i), &mut buffer);
-                        text(display, buffer, 0, 25 + i as i32 * 64);
+                        text_small_white(display, buffer, b as i32 * 64, 110);
                     }
                 }
             }

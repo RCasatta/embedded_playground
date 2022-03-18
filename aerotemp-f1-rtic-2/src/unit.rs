@@ -54,7 +54,7 @@ pub fn _color(degrees: i16) -> Rgb565 {
 
 /// format a value multiplied by 100 into a decimal number with 1 digit after the dot
 pub fn format_100<T: fmt::Write>(val: i16, buf: &mut T) {
-    let sign = if val > 0 { "" } else { "-" };
+    let sign = if val >= 0 { "" } else { "-" };
     let abs_val = val.abs();
     let before_comma = abs_val / 100;
     let after_comma = (abs_val % 100) / 10;
