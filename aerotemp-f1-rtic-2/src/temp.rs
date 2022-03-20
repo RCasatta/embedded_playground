@@ -1,0 +1,1 @@
+struct Temp(i16);

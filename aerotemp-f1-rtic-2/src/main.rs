@@ -24,10 +24,11 @@ mod app {
 
     use crate::button::Button;
     use crate::hist::Hist;
-    use crate::screen::{draw_titles, text_small_white, Model, ModelChange, ScreenType};
+    use crate::screen::{
+        draw_titles, text_small_white, text_temperature, Model, ModelChange, ScreenType,
+    };
     use crate::types::*;
     use crate::unit::{format_100, Unit};
-    use core::fmt::Write;
     use embedded_graphics::geometry::{Point, Size};
     use embedded_graphics::image::Image;
     use embedded_graphics::prelude::RgbColor;
@@ -164,7 +165,7 @@ mod app {
         }
 
         //TODO read from sensors
-        let temps = [current as i16, current as i16];
+        let temps = [current as i16, -(current as i16)];
 
         cx.local.latest_period[current % PERIOD] = temps.clone();
         let change = if ((current + 1) % PERIOD) == 0 {
@@ -204,22 +205,31 @@ mod app {
             match model.screen_type {
                 ScreenType::Both => {
                     for i in 0..2 {
-                        format_100(last[i], &mut buffer);
-                        write!(buffer, "{}", model.unit).unwrap();
-                        text_small_white(display, buffer, 0, 15 + i as i32 * 64);
-                        // let hist = Hist::new(Point::new(0, 25), Size::new(128, 30));
-                        // hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
-                        //     .unwrap();
+                        text_temperature(
+                            display,
+                            buffer,
+                            0,
+                            15 + i as i32 * 64,
+                            false,
+                            last[i],
+                            model.unit,
+                        );
+                        let hist = Hist::new(Point::new(0, 30 + i as i32 * 64), Size::new(128, 30));
+                        hist.draw(
+                            &model.history[i as usize],
+                            display,
+                            RgbColor::GREEN,
+                            RgbColor::BLACK,
+                        )
+                        .unwrap();
                     }
                 }
                 ScreenType::Single(i) => {
                     let i = i as usize;
-                    format_100(last[i], &mut buffer);
-                    write!(buffer, "{}", model.unit).unwrap();
-                    text_small_white(display, buffer, 0, 15);
-                    // let hist = Hist::new(Point::new(0, 25), Size::new(128, 50));
-                    // hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
-                    //     .unwrap();
+                    text_temperature(display, buffer, 0, 15, true, last[i], model.unit);
+                    let hist = Hist::new(Point::new(0, 45), Size::new(128, 50));
+                    hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
+                        .unwrap();
                     for b in 0..2 {
                         buffer.push_str(MIN_OR_MAX[b]).unwrap();
                         format_100(model.min_or_max_converted(b != 0, i), &mut buffer);
@@ -230,7 +240,7 @@ mod app {
         }
     }
 
-    #[task(binds = EXTI0, local = [pa0, screen])]
+    #[task(binds = EXTI0, priority = 2, local = [pa0, screen])]
     fn exti0(cx: exti0::Context) {
         if cx.local.pa0.pressed(monotonics::now()) {
             let new = cx.local.screen.next();
@@ -239,7 +249,7 @@ mod app {
         }
     }
 
-    #[task(binds = EXTI1, local = [pa1, unit])]
+    #[task(binds = EXTI1, priority = 2, local = [pa1, unit])]
     fn exti1(cx: exti1::Context) {
         if cx.local.pa1.pressed(monotonics::now()) {
             let new = cx.local.unit.next();

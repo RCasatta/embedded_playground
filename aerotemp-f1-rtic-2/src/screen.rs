@@ -1,18 +1,22 @@
 use core::str::FromStr;
 
+use core::fmt::Write;
 use defmt::Format;
-use embedded_graphics::mono_font::ascii::FONT_8X13;
+use embedded_graphics::mono_font::iso_8859_13::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::{Point, RgbColor};
 use embedded_graphics::text::renderer::{CharacterStyle, TextRenderer};
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
+use heapless::spsc::Queue;
+
 use heapless::String;
+use profont::{PROFONT_12_POINT, PROFONT_18_POINT, PROFONT_24_POINT, PROFONT_9_POINT};
 
-use crate::types::{Display, Queue, Temp, Temps, PERIOD, TITLES};
+use crate::types::{Display, Temp, Temps, SCREEN_WIDTH, SCREEN_WIDTH_PLUS_1, TITLES};
 
-use crate::unit::{fahrenheit, Unit};
+use crate::unit::{fahrenheit, format_100, Unit};
 
 #[derive(Copy, Clone, Format, Debug)]
 pub enum ScreenType {
@@ -51,7 +55,7 @@ pub struct Model {
     pub last: Temps,
     pub mins: Temps,
     pub maxs: Temps,
-    pub history: [Queue<Temp>; 2],
+    pub history: [Queue<Temp, SCREEN_WIDTH_PLUS_1>; 2],
     pub unit: Unit,
     pub screen_type: ScreenType,
     pub changed: bool,
@@ -83,7 +87,7 @@ impl Model {
                 self.last = last;
                 self.update_min_max(last);
                 for i in 0..2 {
-                    if self.history[i].len() == PERIOD {
+                    if self.history[i].len() == SCREEN_WIDTH {
                         self.history[i].dequeue();
                     }
                     self.history[i].enqueue(average[i]).unwrap();
@@ -134,12 +138,12 @@ pub fn draw_titles(display: &mut Display, screen_type: ScreenType) {
         ScreenType::Both => {
             for i in 0..2usize {
                 let mut title = String::<10>::from_str(TITLES[i]).unwrap();
-                text_small_white(display, &mut title, 0, i as i32 * 64);
+                text_titles(display, &mut title, 0, i as i32 * 64);
             }
         }
         ScreenType::Single(i) => {
             let mut title = String::<10>::from_str(TITLES[i as usize]).unwrap();
-            text_small_white(display, &mut title, 0, 0);
+            text_titles(display, &mut title, 0, 0);
         }
     }
 }
@@ -158,13 +162,55 @@ pub fn text<const N: usize, S: TextRenderer<Color = Rgb565>>(
     buffer.clear()
 }
 
+pub fn text_titles<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
+    let mut style = MonoTextStyle::new(&PROFONT_12_POINT, Rgb565::WHITE);
+    style.set_background_color(Some(Rgb565::BLACK));
+    text(display, buffer, x, y, style)
+}
+
+pub fn text_temperature<const N: usize>(
+    display: &mut Display,
+    buffer: &mut String<N>,
+    x: i32,
+    y: i32,
+    single: bool,
+    temp: Temp,
+    unit: Unit,
+) {
+    let color = if temp < 0 {
+        RgbColor::RED
+    } else if temp < 1500 {
+        RgbColor::YELLOW
+    } else {
+        RgbColor::GREEN
+    };
+    let font = if single {
+        PROFONT_24_POINT
+    } else {
+        PROFONT_12_POINT
+    };
+
+    format_100(temp, buffer);
+    write!(buffer, "{}", unit).unwrap();
+
+    let mut style = MonoTextStyle::new(&font, color);
+    style.set_background_color(Some(Rgb565::BLACK));
+    text(display, buffer, x, y, style)
+}
+
+pub fn text_white<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
+    let mut style = MonoTextStyle::new(&PROFONT_9_POINT, Rgb565::WHITE);
+    style.set_background_color(Some(Rgb565::BLACK));
+    text(display, buffer, x, y, style)
+}
+
 pub fn text_small_white<const N: usize>(
     display: &mut Display,
     buffer: &mut String<N>,
     x: i32,
     y: i32,
 ) {
-    let mut style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+    let mut style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
     style.set_background_color(Some(Rgb565::BLACK));
     text(display, buffer, x, y, style)
 }

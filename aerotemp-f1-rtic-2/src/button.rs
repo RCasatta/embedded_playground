@@ -1,4 +1,4 @@
-use crate::types::{Duration, Instant};
+use crate::types::{Instant, ENOUGH_TIME_BUTTON_PRESSED};
 use stm32f1xx_hal::gpio::{ExtiPin, PinExt};
 
 pub struct Button<T: ExtiPin + PinExt> {
@@ -9,7 +9,7 @@ pub struct Button<T: ExtiPin + PinExt> {
 impl<T: ExtiPin + PinExt> Button<T> {
     /// update last time is pressed, return if it is passed enough time from last time
     pub fn pressed(&mut self, instant: Instant) -> bool {
-        let enough_time_passed = (instant - self.last) > Duration::from_ticks(100);
+        let enough_time_passed = (instant - self.last) > ENOUGH_TIME_BUTTON_PRESSED;
         defmt::debug!(
             "pin{=u8} pressed at {=u64} last {=u64} enough time passed:{=bool}",
             self.pin.pin_id(),
