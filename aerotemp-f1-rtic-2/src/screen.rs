@@ -11,7 +11,7 @@ use embedded_graphics::Drawable;
 use heapless::spsc::Queue;
 
 use heapless::String;
-use profont::{PROFONT_12_POINT, PROFONT_24_POINT, PROFONT_9_POINT};
+use profont::{PROFONT_12_POINT, PROFONT_18_POINT, PROFONT_24_POINT, PROFONT_9_POINT};
 
 use crate::temp::Temp;
 use crate::types::{Display, Temps, SCREEN_WIDTH, SCREEN_WIDTH_PLUS_1, TITLES};
@@ -174,7 +174,7 @@ pub fn text_temperature<const N: usize>(
     let font = if single {
         PROFONT_24_POINT
     } else {
-        PROFONT_12_POINT
+        PROFONT_18_POINT
     };
 
     temp.write_buffer(unit, true, buffer);

@@ -27,7 +27,7 @@ pub type Temps = [Temp; 2];
 pub const PERIOD: usize = 2;
 pub const SCREEN_WIDTH: usize = 128;
 pub const SCREEN_WIDTH_PLUS_1: usize = SCREEN_WIDTH + 1;
-pub const ENOUGH_TIME_BUTTON_PRESSED: Duration = Duration::from_ticks(100);
+pub const ENOUGH_TIME_BUTTON_PRESSED: Duration = Duration::from_ticks(200);
 
 pub const ONE_SEC: Duration = Duration::from_ticks(1_000);
 pub const ZERO_INSTANT: Instant = Instant::from_ticks(0);

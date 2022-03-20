@@ -25,6 +25,9 @@ impl Deref for Temp {
     }
 }
 
+/// SPACES to add before the temperature to align right
+const SPACES: [&str; 7] = ["", "", "", "   ", "  ", " ", ""];
+
 impl Temp {
     /// format into `buffer` this temperature in the given unit for example: `-12.3°C`
     /// 7 characters are always used with unit and 5 character without
@@ -33,17 +36,40 @@ impl Temp {
             Unit::Fahrenheit => fahrenheit(self.0),
             Unit::Celsius => self.0,
         };
-        let abs_val = val.abs();
-        let before_comma = val / 100;
+        let abs_val = val.abs() as u16;
+        let mut before_comma = abs_val / 100;
         let after_comma = (abs_val % 100) / 10;
-        let need_comma = abs_val < 10_000;
 
-        defmt::debug!("before_comma:{=i16}", before_comma);
-        match (need_comma, show_unit) {
-            (true, true) => write!(buf, "{}.{}{}", before_comma, after_comma, unit).unwrap(),
-            (true, false) => write!(buf, "{}.{}", before_comma, after_comma).unwrap(),
-            (false, true) => write!(buf, "{}{}", before_comma, unit).unwrap(),
-            (false, false) => write!(buf, "{}", before_comma).unwrap(),
+        let mut char_used = 0usize; // character used by the temperature excluded the units
+        if val < 0 {
+            char_used += 1;
+        }
+        if before_comma < 10 {
+            char_used += 3; // 1 before, 1 for comma, 1 after
+        } else if before_comma < 100 {
+            char_used += 4; // 2 before, 1 for comma, 1 after
+        } else if before_comma < 1000 {
+            char_used += 3; // 3 before
+        } else {
+            char_used += 3; // 3 before
+            before_comma = 999; // overflow
+        }
+
+        let need_comma = before_comma < 100;
+
+        let spaces = SPACES[char_used];
+        write!(buf, "{}", spaces).unwrap();
+
+        if val < 0 {
+            write!(buf, "-").unwrap();
+        }
+        if need_comma {
+            write!(buf, "{}.{}", before_comma, after_comma).unwrap();
+        } else {
+            write!(buf, "{}", before_comma).unwrap();
+        }
+        if show_unit {
+            write!(buf, "{}", unit).unwrap();
         }
     }
 }
