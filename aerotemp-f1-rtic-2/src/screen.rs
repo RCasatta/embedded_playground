@@ -11,7 +11,7 @@ use embedded_graphics::Drawable;
 use heapless::spsc::Queue;
 
 use heapless::String;
-use profont::{PROFONT_12_POINT, PROFONT_18_POINT, PROFONT_24_POINT, PROFONT_9_POINT};
+use profont::{PROFONT_12_POINT, PROFONT_18_POINT, PROFONT_24_POINT};
 
 use crate::temp::Temp;
 use crate::types::{Display, Temps, SCREEN_WIDTH, SCREEN_WIDTH_PLUS_1, TITLES};
@@ -150,7 +150,7 @@ pub fn text<const N: usize, S: TextRenderer<Color = Rgb565>>(
 }
 
 pub fn text_titles<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
-    let mut style = MonoTextStyle::new(&PROFONT_12_POINT, Rgb565::WHITE);
+    let mut style = MonoTextStyle::new(&PROFONT_18_POINT, Rgb565::WHITE);
     style.set_background_color(Some(Rgb565::BLACK));
     text(display, buffer, x, y, style)
 }
@@ -180,12 +180,6 @@ pub fn text_temperature<const N: usize>(
     temp.write_buffer(unit, true, buffer);
 
     let mut style = MonoTextStyle::new(&font, color);
-    style.set_background_color(Some(Rgb565::BLACK));
-    text(display, buffer, x, y, style)
-}
-
-pub fn _text_white<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
-    let mut style = MonoTextStyle::new(&PROFONT_9_POINT, Rgb565::WHITE);
     style.set_background_color(Some(Rgb565::BLACK));
     text(display, buffer, x, y, style)
 }
