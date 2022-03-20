@@ -6,6 +6,7 @@
 mod button;
 mod hist;
 mod screen;
+mod temp;
 mod types;
 mod unit;
 
@@ -28,7 +29,7 @@ mod app {
         draw_titles, text_small_white, text_temperature, Model, ModelChange, ScreenType,
     };
     use crate::types::*;
-    use crate::unit::{format_100, Unit};
+    use crate::unit::Unit;
     use embedded_graphics::geometry::{Point, Size};
     use embedded_graphics::image::Image;
     use embedded_graphics::prelude::RgbColor;
@@ -135,7 +136,7 @@ mod app {
             Shared {},
             Local {
                 seconds: 0,
-                latest_period: [[0, 0]; PERIOD],
+                latest_period: [[0.into(), 0.into()]; PERIOD],
                 pa0: Button {
                     pin: pa0,
                     last: ZERO_INSTANT,
@@ -165,16 +166,16 @@ mod app {
         }
 
         //TODO read from sensors
-        let temps = [current as i16, -(current as i16)];
+        let temps = [(current as i16).into(), (-(current as i16)).into()];
 
         cx.local.latest_period[current % PERIOD] = temps.clone();
         let change = if ((current + 1) % PERIOD) == 0 {
             let acc = cx.local.latest_period.iter().fold([0i32; 2], |acc, x| {
-                [acc[0] + x[0] as i32, acc[1] + x[1] as i32]
+                [acc[0] + x[0].0 as i32, acc[1] + x[1].0 as i32]
             });
             let average = [
-                (acc[0] / PERIOD as i32) as i16,
-                (acc[1] / PERIOD as i32) as i16,
+                ((acc[0] / PERIOD as i32) as i16).into(),
+                ((acc[1] / PERIOD as i32) as i16).into(),
             ];
             ModelChange::LastAndAverage(temps, average)
         } else {
@@ -201,13 +202,13 @@ mod app {
                 draw_titles(&mut display, model.screen_type);
             }
             // draw temp
-            let last = model.last_converted();
+            let last = model.last;
             match model.screen_type {
                 ScreenType::Both => {
                     for i in 0..2 {
                         text_temperature(
                             display,
-                            buffer,
+                            &mut buffer,
                             0,
                             15 + i as i32 * 64,
                             false,
@@ -226,13 +227,15 @@ mod app {
                 }
                 ScreenType::Single(i) => {
                     let i = i as usize;
-                    text_temperature(display, buffer, 0, 15, true, last[i], model.unit);
+                    text_temperature(display, &mut buffer, 0, 15, true, last[i], model.unit);
                     let hist = Hist::new(Point::new(0, 45), Size::new(128, 50));
                     hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
                         .unwrap();
                     for b in 0..2 {
                         buffer.push_str(MIN_OR_MAX[b]).unwrap();
-                        format_100(model.min_or_max_converted(b != 0, i), &mut buffer);
+                        model
+                            .min_or_max(b != 0, i)
+                            .write_buffer(model.unit, false, &mut buffer);
                         text_small_white(display, buffer, b as i32 * 64, 110);
                     }
                 }

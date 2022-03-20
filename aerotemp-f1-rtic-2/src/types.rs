@@ -6,6 +6,8 @@ use stm32f1xx_hal::{
 use stm32f1xx_hal::{pac, spi};
 use systick_monotonic::fugit;
 
+use crate::temp::Temp;
+
 pub type Instant = fugit::Instant<u64, 1, 1000>;
 pub type Duration = fugit::Duration<u64, 1, 1000>;
 
@@ -20,7 +22,6 @@ pub type SPI1 = spi::Spi<pac::SPI1, Spi1NoRemap, (PA5, PA6, PA7), u8>;
 
 pub type Display = GraphicsMode<SpiInterface<SPI1, PA3>>;
 
-pub type Temp = i16;
 pub type Temps = [Temp; 2];
 
 pub const PERIOD: usize = 2;

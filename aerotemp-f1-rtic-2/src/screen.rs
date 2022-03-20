@@ -1,6 +1,5 @@
 use core::str::FromStr;
 
-use core::fmt::Write;
 use defmt::Format;
 use embedded_graphics::mono_font::iso_8859_13::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -12,11 +11,12 @@ use embedded_graphics::Drawable;
 use heapless::spsc::Queue;
 
 use heapless::String;
-use profont::{PROFONT_12_POINT, PROFONT_18_POINT, PROFONT_24_POINT, PROFONT_9_POINT};
+use profont::{PROFONT_12_POINT, PROFONT_24_POINT, PROFONT_9_POINT};
 
-use crate::types::{Display, Temp, Temps, SCREEN_WIDTH, SCREEN_WIDTH_PLUS_1, TITLES};
+use crate::temp::Temp;
+use crate::types::{Display, Temps, SCREEN_WIDTH, SCREEN_WIDTH_PLUS_1, TITLES};
 
-use crate::unit::{fahrenheit, format_100, Unit};
+use crate::unit::Unit;
 
 #[derive(Copy, Clone, Format, Debug)]
 pub enum ScreenType {
@@ -65,8 +65,8 @@ pub struct Model {
 impl Model {
     fn update_min_max(&mut self, temps: Temps) {
         for i in 0..2 {
-            self.mins[i] = self.mins[i].min(temps[i]);
-            self.maxs[i] = self.maxs[i].max(temps[i]);
+            self.mins[i] = self.mins[i].min(*temps[i]).into();
+            self.maxs[i] = self.maxs[i].max(*temps[i]).into();
         }
     }
     pub fn apply(&mut self, changes: ModelChange) {
@@ -110,24 +110,11 @@ impl Model {
         }
     }
 
-    pub fn last_converted(&self) -> Temps {
-        match self.unit {
-            Unit::Celsius => self.last,
-            Unit::Fahrenheit => [fahrenheit(self.last[0]), fahrenheit(self.last[1])],
-        }
-    }
-
-    pub fn min_or_max_converted(&self, max: bool, index: usize) -> Temp {
+    pub fn min_or_max(&self, max: bool, index: usize) -> Temp {
         if max {
-            match self.unit {
-                Unit::Celsius => self.maxs[index],
-                Unit::Fahrenheit => fahrenheit(self.maxs[index]),
-            }
+            self.maxs[index]
         } else {
-            match self.unit {
-                Unit::Celsius => self.mins[index],
-                Unit::Fahrenheit => fahrenheit(self.mins[index]),
-            }
+            self.mins[index]
         }
     }
 }
@@ -177,9 +164,9 @@ pub fn text_temperature<const N: usize>(
     temp: Temp,
     unit: Unit,
 ) {
-    let color = if temp < 0 {
+    let color = if temp < 0.into() {
         RgbColor::RED
-    } else if temp < 1500 {
+    } else if temp < 1500.into() {
         RgbColor::YELLOW
     } else {
         RgbColor::GREEN
@@ -190,15 +177,14 @@ pub fn text_temperature<const N: usize>(
         PROFONT_12_POINT
     };
 
-    format_100(temp, buffer);
-    write!(buffer, "{}", unit).unwrap();
+    temp.write_buffer(unit, true, buffer);
 
     let mut style = MonoTextStyle::new(&font, color);
     style.set_background_color(Some(Rgb565::BLACK));
     text(display, buffer, x, y, style)
 }
 
-pub fn text_white<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
+pub fn _text_white<const N: usize>(display: &mut Display, buffer: &mut String<N>, x: i32, y: i32) {
     let mut style = MonoTextStyle::new(&PROFONT_9_POINT, Rgb565::WHITE);
     style.set_background_color(Some(Rgb565::BLACK));
     text(display, buffer, x, y, style)

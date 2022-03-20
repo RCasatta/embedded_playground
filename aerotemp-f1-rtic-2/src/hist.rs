@@ -9,6 +9,8 @@ use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics::Drawable;
 use heapless::spsc::Queue;
 
+use crate::temp::Temp;
+
 /// Represent a histogram with values contained in the `ring` but rescaled to fit in the window
 /// defined by the `upper_left` and `lower_right` points
 #[derive(Debug)]
@@ -36,7 +38,7 @@ impl Hist {
     /// Draw the histogram on a display
     pub fn draw<C: PixelColor, D: DrawTarget<Color = C>, const N: usize>(
         &self,
-        queue: &Queue<i16, N>,
+        queue: &Queue<Temp, N>,
         display: &mut D,
         foreground: C,
         background: C,
@@ -57,7 +59,10 @@ impl Hist {
 
     /// internal testable method, returning N tuples of 3 points (A,B,C)
     /// A->B will be foreground colored while B-C will be background colored
-    fn draw_lines<const N: usize>(&self, array: &Queue<i16, N>) -> Result<[ThreePoints; N], Error> {
+    fn draw_lines<const N: usize>(
+        &self,
+        array: &Queue<Temp, N>,
+    ) -> Result<[ThreePoints; N], Error> {
         let mut result = [ThreePoints::default(); N];
 
         if array.len() > 0 {
@@ -70,7 +75,7 @@ impl Hist {
             for (i, val) in array.iter().enumerate() {
                 let x = (baseline_x + self.size.width as usize - array.len() + i) as i32;
 
-                let mut zero_one = ((val - min) as f32) / delta as f32;
+                let mut zero_one = ((val.0 - min) as f32) / delta as f32;
                 if zero_one.is_nan() {
                     zero_one = 0.5;
                 }
@@ -95,12 +100,12 @@ impl Hist {
     }
 }
 
-fn min_max<const N: usize>(array: &Queue<i16, N>) -> (i16, i16) {
+fn min_max<const N: usize>(array: &Queue<Temp, N>) -> (i16, i16) {
     let mut min = i16::MAX;
     let mut max = i16::MIN;
     for i in array.iter() {
-        min = min.min(*i);
-        max = max.max(*i);
+        min = min.min(i.0);
+        max = max.max(i.0);
     }
     (min, max)
 }
