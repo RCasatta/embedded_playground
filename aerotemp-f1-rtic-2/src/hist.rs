@@ -3,13 +3,12 @@
 //! This module provides implementation to draw histograms on a Display
 //!
 
+use crate::temp::Temp;
 use embedded_graphics::geometry::{Point, Size};
 use embedded_graphics::prelude::{DrawTarget, PixelColor, Primitive};
 use embedded_graphics::primitives::{Line, PrimitiveStyle};
 use embedded_graphics::Drawable;
 use heapless::spsc::Queue;
-
-use crate::temp::Temp;
 
 /// Represent a histogram with values contained in the `ring` but rescaled to fit in the window
 /// defined by the `upper_left` and `lower_right` points

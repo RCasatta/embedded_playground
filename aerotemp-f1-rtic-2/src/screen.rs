@@ -1,5 +1,4 @@
 use core::str::FromStr;
-
 use defmt::Format;
 use embedded_graphics::mono_font::iso_8859_13::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
@@ -9,9 +8,8 @@ use embedded_graphics::text::renderer::{CharacterStyle, TextRenderer};
 use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
 use heapless::spsc::Queue;
-
 use heapless::String;
-use profont::{PROFONT_12_POINT, PROFONT_18_POINT, PROFONT_24_POINT};
+use profont::{PROFONT_18_POINT, PROFONT_24_POINT};
 
 use crate::temp::Temp;
 use crate::types::{Display, Temps, SCREEN_WIDTH, SCREEN_WIDTH_PLUS_1, TITLES};

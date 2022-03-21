@@ -1,6 +1,5 @@
 use core::fmt::Write;
 use core::ops::Deref;
-
 use defmt::Format;
 use heapless::String;
 

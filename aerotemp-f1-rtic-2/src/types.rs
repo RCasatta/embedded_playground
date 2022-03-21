@@ -1,3 +1,4 @@
+use crate::temp::Temp;
 use ssd1351::{interface::SpiInterface, mode::GraphicsMode};
 use stm32f1xx_hal::{
     gpio::{Alternate, Floating, Input, Output, Pin, PullUp, PushPull, CRL},
@@ -5,8 +6,6 @@ use stm32f1xx_hal::{
 };
 use stm32f1xx_hal::{pac, spi};
 use systick_monotonic::fugit;
-
-use crate::temp::Temp;
 
 pub type Instant = fugit::Instant<u64, 1, 1000>;
 pub type Duration = fugit::Duration<u64, 1, 1000>;

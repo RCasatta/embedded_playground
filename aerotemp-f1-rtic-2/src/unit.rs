@@ -1,5 +1,4 @@
 use core::fmt;
-
 use defmt::Format;
 
 #[derive(Copy, Clone, Format, Debug)]
