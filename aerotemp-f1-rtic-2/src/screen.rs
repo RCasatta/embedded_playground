@@ -50,7 +50,7 @@ pub enum ModelChange {
 
 #[derive(Default)]
 pub struct Model {
-    pub last: Temps,
+    pub last: Option<Temps>,
     pub mins: Temps,
     pub maxs: Temps,
     pub history: [Queue<Temp, SCREEN_WIDTH_PLUS_1>; 2],
@@ -71,9 +71,9 @@ impl Model {
         match changes {
             ModelChange::Last(last) => {
                 self.clear = false;
-                if last != self.last {
+                if Some(last) != self.last {
                     self.changed = true;
-                    self.last = last;
+                    self.last = Some(last);
                     self.update_min_max(last);
                 } else {
                     self.changed = false;
@@ -82,7 +82,7 @@ impl Model {
             ModelChange::LastAndAverage(last, average) => {
                 self.changed = true;
                 self.clear = false;
-                self.last = last;
+                self.last = Some(last);
                 self.update_min_max(last);
                 for i in 0..2 {
                     if self.history[i].len() == SCREEN_WIDTH {

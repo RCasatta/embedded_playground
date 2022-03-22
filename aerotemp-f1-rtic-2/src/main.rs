@@ -246,44 +246,47 @@ mod app {
                 draw_titles(&mut display, model.screen_type);
             }
             // draw temp
-            let last = model.last;
-            match model.screen_type {
-                ScreenType::Both => {
-                    for i in 0..2 {
-                        text_temperature(
-                            display,
-                            &mut buffer,
-                            32,
-                            6 + i as i32 * 64,
-                            false,
-                            last[i],
-                            model.unit,
-                        );
-                        let hist = Hist::new(
-                            Point::new(0, 30 + i as i32 * 64),
-                            Size::new(SCREEN_WIDTH as u32, 30),
-                        );
-                        hist.draw(
-                            &model.history[i as usize],
-                            display,
-                            RgbColor::GREEN,
-                            RgbColor::BLACK,
-                        )
-                        .unwrap();
+            if let Some(last) = model.last.as_ref() {
+                match model.screen_type {
+                    ScreenType::Both => {
+                        for i in 0..2 {
+                            text_temperature(
+                                display,
+                                &mut buffer,
+                                32,
+                                6 + i as i32 * 64,
+                                false,
+                                last[i],
+                                model.unit,
+                            );
+                            let hist = Hist::new(
+                                Point::new(0, 30 + i as i32 * 64),
+                                Size::new(SCREEN_WIDTH as u32, 30),
+                            );
+                            hist.draw(
+                                &model.history[i as usize],
+                                display,
+                                RgbColor::GREEN,
+                                RgbColor::BLACK,
+                            )
+                            .unwrap();
+                        }
                     }
-                }
-                ScreenType::Single(i) => {
-                    let i = i as usize;
-                    text_temperature(display, &mut buffer, 0, 20, true, last[i], model.unit);
-                    let hist = Hist::new(Point::new(0, 53), Size::new(SCREEN_WIDTH as u32, 45));
-                    hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
-                        .unwrap();
-                    for b in 0..2 {
-                        buffer.push_str(MIN_OR_MAX[b]).unwrap();
-                        model
-                            .min_or_max(b != 0, i)
-                            .write_buffer(model.unit, false, &mut buffer);
-                        text_small_white(display, buffer, b as i32 * 68, 110);
+                    ScreenType::Single(i) => {
+                        let i = i as usize;
+                        text_temperature(display, &mut buffer, 0, 20, true, last[i], model.unit);
+                        let hist = Hist::new(Point::new(0, 53), Size::new(SCREEN_WIDTH as u32, 45));
+                        hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
+                            .unwrap();
+                        for b in 0..2 {
+                            buffer.push_str(MIN_OR_MAX[b]).unwrap();
+                            model.min_or_max(b != 0, i).write_buffer(
+                                model.unit,
+                                false,
+                                &mut buffer,
+                            );
+                            text_small_white(display, buffer, b as i32 * 68, 110);
+                        }
                     }
                 }
             }
