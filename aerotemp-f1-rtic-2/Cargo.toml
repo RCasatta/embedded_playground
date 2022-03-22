@@ -20,6 +20,9 @@ embedded-graphics = "0.7.1"
 tinytga = "0.4.1"
 heapless = "0.7.10"
 profont = "0.6.1"
+shared-bus-rtic = "0.2.2"
+max31865 = "0.1.1"
+
 
 [[bin]]
 name = "aerotemp-f1-rtic-2"

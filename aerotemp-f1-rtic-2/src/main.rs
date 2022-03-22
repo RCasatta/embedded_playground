@@ -17,6 +17,9 @@ use rtic::app;
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [TAMPER])]
 mod app {
 
+    use max31865::FilterMode::Filter50Hz;
+    use max31865::SensorType::TwoOrFourWire;
+    use max31865::{temp_conversion, Max31865};
     use ssd1351::builder::Builder;
     use stm32f1xx_hal::gpio::{Edge, ExtiPin};
     use stm32f1xx_hal::prelude::*;
@@ -56,6 +59,7 @@ mod app {
         screen: ScreenType,
 
         model: Model,
+        temps: SharedBusResources<BusType>,
     }
 
     #[monotonic(binds = SysTick, default = true)]
@@ -129,6 +133,37 @@ mod app {
         image.draw(&mut display).unwrap();
         defmt::debug!("draw image");
 
+        // Setup sensors
+
+        let mut gpiob = cx.device.GPIOB.split();
+
+        let pins = (
+            gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh), // sck
+            gpiob.pb14.into_floating_input(&mut gpiob.crh),      // miso
+            gpiob.pb15.into_alternate_push_pull(&mut gpiob.crh), // mosi
+        );
+
+        let spi = Spi::spi2(cx.device.SPI2, pins, max31865::MODE, 2.MHz(), clocks);
+
+        let manager = shared_bus_rtic::new!(spi, BusType);
+
+        let rdy_1 = gpiob.pb1;
+        let nss_1 = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+
+        let rdy_2 = gpiob.pb10;
+        let nss_2 = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
+
+        let mut t1 = Max31865::new(manager.acquire(), nss_1, rdy_1).unwrap();
+        t1.configure(true, true, false, TwoOrFourWire, Filter50Hz)
+            .unwrap();
+        t1.set_calibration(430_000);
+
+        let mut t2 = Max31865::new(manager.acquire(), nss_2, rdy_2).unwrap();
+        t2.configure(true, true, false, TwoOrFourWire, Filter50Hz)
+            .unwrap();
+        t2.set_calibration(430_000);
+        let temps = SharedBusResources { t1, t2 };
+
         // Schedule the every_second task
         every_second::spawn_after(ONE_SEC).unwrap();
 
@@ -150,12 +185,13 @@ mod app {
                 unit: Unit::Celsius,
                 screen: ScreenType::Both,
                 model: Model::default(),
+                temps,
             },
             init::Monotonics(mono),
         )
     }
 
-    #[task(local = [seconds, latest_period])]
+    #[task(local = [seconds, latest_period, temps])]
     fn every_second(cx: every_second::Context) {
         every_second::spawn_after(ONE_SEC).unwrap();
 
@@ -165,8 +201,16 @@ mod app {
             draw::spawn(ModelChange::Clear).unwrap();
         }
 
-        //TODO read from sensors
-        let temps = [(current as i16).into(), (-(current as i16)).into()];
+        //DEBUG mock read for sensors
+        //let temps = [(current as i16).into(), (-(current as i16)).into()];
+
+        let ohms1 = cx.local.temps.t1.read_ohms().unwrap();
+        let t1 = temp_conversion::LOOKUP_VEC_PT1000.lookup_temperature(ohms1 as i32) as i16;
+
+        let ohms2 = cx.local.temps.t2.read_ohms().unwrap();
+        let t2 = temp_conversion::LOOKUP_VEC_PT1000.lookup_temperature(ohms2 as i32) as i16;
+
+        let temps = [t1.into(), t2.into()];
 
         cx.local.latest_period[current % PERIOD] = temps.clone();
         let change = if ((current + 1) % PERIOD) == 0 {
