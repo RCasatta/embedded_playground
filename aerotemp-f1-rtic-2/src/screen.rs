@@ -48,7 +48,6 @@ pub enum ModelChange {
     Clear,
 }
 
-#[derive(Default)]
 pub struct Model {
     pub last: Option<Temps>,
     pub mins: Temps,
@@ -58,6 +57,21 @@ pub struct Model {
     pub screen_type: ScreenType,
     pub changed: bool,
     pub clear: bool,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            last: Default::default(),
+            mins: [i16::MAX.into(), i16::MAX.into()],
+            maxs: [i16::MIN.into(), i16::MIN.into()],
+            history: Default::default(),
+            unit: Default::default(),
+            screen_type: Default::default(),
+            changed: Default::default(),
+            clear: Default::default(),
+        }
+    }
 }
 
 impl Model {
