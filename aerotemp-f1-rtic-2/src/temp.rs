@@ -25,7 +25,7 @@ impl Deref for Temp {
 }
 
 /// SPACES to add before the temperature to align right
-const SPACES: [&str; 7] = ["", "", "", "   ", "  ", " ", ""];
+const SPACES: [&str; 6] = ["", "", "", "  ", " ", ""];
 
 impl Temp {
     /// format into `buffer` this temperature in the given unit for example: `-12.3°C`

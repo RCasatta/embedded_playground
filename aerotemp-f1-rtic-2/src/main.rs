@@ -253,15 +253,15 @@ mod app {
                             text_temperature(
                                 display,
                                 &mut buffer,
-                                32,
-                                6 + i as i32 * 64,
+                                42,
+                                i as i32 * 64,
                                 false,
                                 last[i],
                                 model.unit,
                             );
                             let hist = Hist::new(
-                                Point::new(0, 30 + i as i32 * 64),
-                                Size::new(SCREEN_WIDTH as u32, 30),
+                                Point::new(0, 26 + i as i32 * 64),
+                                Size::new(SCREEN_WIDTH as u32, 28),
                             );
                             hist.draw(
                                 &model.history[i as usize],
@@ -274,7 +274,7 @@ mod app {
                     }
                     ScreenType::Single(i) => {
                         let i = i as usize;
-                        text_temperature(display, &mut buffer, 0, 20, true, last[i], model.unit);
+                        text_temperature(display, &mut buffer, 8, 20, true, last[i], model.unit);
                         let hist = Hist::new(Point::new(0, 53), Size::new(SCREEN_WIDTH as u32, 45));
                         hist.draw(&model.history[i], display, RgbColor::GREEN, RgbColor::BLACK)
                             .unwrap();
@@ -285,7 +285,7 @@ mod app {
                                 false,
                                 &mut buffer,
                             );
-                            text_small_white(display, buffer, b as i32 * 68, 110);
+                            text_small_white(display, buffer, b as i32 * 70, 110);
                         }
                     }
                 }
