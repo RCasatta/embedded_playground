@@ -83,15 +83,7 @@ impl Hist {
                 let a = Point::new(x, baseline_y);
                 let b = Point::new(x, baseline_y - rescaled);
                 let c = Point::new(x, baseline_y - self.size.height as i32 + 1);
-                defmt::trace!(
-                    "a: {=i32} {=i32} b: {=i32} {=i32} c: {=i32} {=i32}",
-                    a.x,
-                    a.y,
-                    b.x,
-                    b.y,
-                    c.x,
-                    c.y
-                );
+
                 result[i] = [a, b, c];
             }
         }

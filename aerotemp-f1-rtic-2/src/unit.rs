@@ -1,7 +1,6 @@
 use core::fmt;
-use defmt::Format;
 
-#[derive(Copy, Clone, Format, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Unit {
     Celsius,
     Fahrenheit,

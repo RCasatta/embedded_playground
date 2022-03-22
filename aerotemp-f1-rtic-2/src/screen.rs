@@ -1,5 +1,4 @@
 use core::str::FromStr;
-use defmt::Format;
 use embedded_graphics::mono_font::iso_8859_13::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::Rgb565;
@@ -16,7 +15,7 @@ use crate::types::{Display, Temps, SCREEN_WIDTH, SCREEN_WIDTH_PLUS_1, TITLES};
 
 use crate::unit::Unit;
 
-#[derive(Copy, Clone, Format, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum ScreenType {
     Both,
     Single(bool),
@@ -39,7 +38,7 @@ impl Default for ScreenType {
     }
 }
 
-#[derive(Debug, Format)]
+#[derive(Debug)]
 pub enum ModelChange {
     Last(Temps),
     LastAndAverage(Temps, Temps),

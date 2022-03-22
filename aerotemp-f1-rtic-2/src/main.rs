@@ -1,5 +1,5 @@
 #![deny(unsafe_code)]
-// #![deny(warnings)]
+#![deny(warnings)]
 #![no_main]
 #![no_std]
 
@@ -10,8 +10,8 @@ mod temp;
 mod types;
 mod unit;
 
-use defmt_rtt as _;
-use panic_rtt_target as _;
+use panic_halt as _;
+
 use rtic::app;
 
 #[app(device = stm32f1xx_hal::pac, peripherals = true, dispatchers = [TAMPER])]
@@ -67,8 +67,6 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
-        defmt::debug!("init");
-
         // Setup clocks
         let mut flash = cx.device.FLASH.constrain();
         let rcc = cx.device.RCC.constrain();
@@ -95,7 +93,6 @@ mod app {
         pa1.enable_interrupt(&cx.device.EXTI);
 
         // Setup display
-        defmt::debug!("Setup display");
         let mut nss = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
         nss.set_low();
         let pins = (
@@ -120,21 +117,16 @@ mod app {
         let mono = Systick::new(cx.core.SYST, 36_000_000);
         let mut delay = cx.device.TIM2.delay::<1000>(&clocks);
         display.reset(&mut rst, &mut delay).unwrap();
-        defmt::debug!("display reset");
         display.init().unwrap();
-        defmt::debug!("display init");
         display.set_rotation(DisplayRotation::Rotate180).unwrap();
 
         let image_data = include_bytes!("../assets/logo_groppo_aviazione_128x128.tga");
         let tga = DynamicTga::from_slice(image_data).unwrap();
-        defmt::debug!("loading dynamic image");
 
         let image = Image::new(&tga, Point::zero());
         image.draw(&mut display).unwrap();
-        defmt::debug!("draw image");
 
         // Setup sensors
-
         let mut gpiob = cx.device.GPIOB.split();
 
         let pins = (
@@ -196,7 +188,6 @@ mod app {
         every_second::spawn_after(ONE_SEC).unwrap();
 
         let current = *cx.local.seconds;
-        defmt::debug!("every_second {=usize}", current);
         if current == 0 {
             draw::spawn(ModelChange::Clear).unwrap();
         }
@@ -232,8 +223,6 @@ mod app {
 
     #[task(capacity = 3, local = [display, model, buffer: String<32> = String::new()])]
     fn draw(cx: draw::Context, changes: ModelChange) {
-        defmt::debug!("draw {}", changes);
-
         let model = cx.local.model;
         let mut display = cx.local.display;
         let mut buffer = cx.local.buffer;
@@ -297,7 +286,6 @@ mod app {
     fn exti0(cx: exti0::Context) {
         if cx.local.pa0.pressed(monotonics::now()) {
             let new = cx.local.screen.next();
-            defmt::debug!("screen {}", new);
             draw::spawn(ModelChange::ScreenType(new)).unwrap();
         }
     }
@@ -306,7 +294,6 @@ mod app {
     fn exti1(cx: exti1::Context) {
         if cx.local.pa1.pressed(monotonics::now()) {
             let new = cx.local.unit.next();
-            defmt::debug!("unit {}", new);
             draw::spawn(ModelChange::Unit(new)).unwrap();
         }
     }

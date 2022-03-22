@@ -1,12 +1,11 @@
 use core::fmt::Write;
 use core::ops::Deref;
-use defmt::Format;
 use heapless::String;
 
 use crate::unit::Unit;
 
 /// A temperature stored in celsius multiplied by 100 (eg. `Temp(100i16) = 1.0°C` )
-#[derive(Debug, Format, Default, Clone, Copy, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd)]
 
 pub struct Temp(pub i16);
 
